@@ -27,6 +27,5 @@ npm-debug.log*
 Thumbs.db
 
 # Pastas que não precrisam enviar os arquivos dentro junto
-uploads/mensagens/*
-uploads/sinais/*
+uploads/
 banco/tabelas
