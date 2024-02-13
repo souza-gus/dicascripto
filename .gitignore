@@ -1,0 +1,32 @@
+# Node.js
+node_modules/
+
+# Visual Studio Code
+.vscode/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependências locais
+/.pnp
+.pnp.js
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
+
+# Arquivos de compilação
+*.out
+*.map
+
+# Arquivos de configuração específicos do sistema
+.DS_Store
+Thumbs.db
+
+# Pastas que não precrisam enviar os arquivos dentro junto
+uploads/mensagens/*
+uploads/sinais/*
+banco/tabelas
