@@ -36,3 +36,5 @@ Thumbs.db
 # Pastas que não precrisam enviar os arquivos dentro junto
 uploads/
 banco/tabelas
+package-lock.json
+package.json
