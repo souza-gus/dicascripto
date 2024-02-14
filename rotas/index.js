@@ -27,13 +27,16 @@ Object.keys(models).forEach(model => {
 
             await models[model].create(request.body);
 
-            response.status(200).json({ "mensagem": "OK" });
+            response.status(200).json({ "mensagem": "Os dados foram criados com sucesso." });
         } catch (error) {
 
             var erro_mensagem = error.message;
             try { erro_mensagem = JSON.parse(error.message) } catch (error) { };
 
-            response.status(500).json({ "erro": erro_mensagem });
+            response.status(500).json({
+                "mensagem": "Desculpe, ocorreu um problema ao criar os dados. Por favor, tente novamente.",
+                "erro": erro_mensagem
+            });
         };
     });
 
@@ -60,13 +63,16 @@ Object.keys(models).forEach(model => {
 
             await models[model].bulkCreate([...request.body]);
 
-            response.status(200).json({ "mensagem": "OK" });
+            response.status(200).json({ "mensagem": "Os dados foram criados com sucesso." });
         } catch (error) {
 
             var erro_mensagem = error.message;
             try { erro_mensagem = JSON.parse(error.message) } catch (error) { };
 
-            response.status(500).json({ "erro": erro_mensagem });
+            response.status(500).json({
+                "mensagem": "Desculpe, ocorreu um problema ao criar os dados. Por favor, tente novamente.",
+                "erro": erro_mensagem
+            });
         };
     });
 
@@ -79,9 +85,12 @@ Object.keys(models).forEach(model => {
 
             await models[model].destroy({ where: { id: request.params.id } });
 
-            response.status(200).json({ "mensagem": "OK" });
+            response.status(200).json({ "mensagem": "Os dados foram excluídos com sucesso!" });
         } catch (error) {
-            response.status(500).json({ "erro": error.message });
+            response.status(500).json({
+                "mensagem": "Desculpe, ocorreu um problema ao excluir os dados. Por favor, tente novamente.",
+                "erro": error.message
+            });
         };
     });
 
@@ -94,9 +103,12 @@ Object.keys(models).forEach(model => {
 
             await models[model].destroy({ where: { id: [...request.body] } });
 
-            response.status(200).json({ "mensagem": "OK" });
+            response.status(200).json({ "mensagem": "Os dados foram excluídos com sucesso!" });
         } catch (error) {
-            response.status(500).json({ "erro": error.message });
+            response.status(500).json({
+                "mensagem": "Desculpe, ocorreu um problema ao excluir os dados. Por favor, tente novamente.",
+                "erro": error.message
+            });
         };
     });
 
@@ -139,7 +151,7 @@ Object.keys(models).forEach(model => {
 
             // Retorna a resposta
             response.status(200).json({
-                "message": "OK",
+                "mensagem": "OK",
                 "count": count,
                 "total_paginas": total_paginas,
                 "pagina": pagina,
@@ -147,7 +159,10 @@ Object.keys(models).forEach(model => {
             });
 
         } catch (error) {
-            response.status(500).json({ "erro": error.message });
+            response.status(500).json({
+                "mensagem": "Ops! Não foi possível recuperar os dados. Por favor, tente novamente.",
+                "erro": error.message
+            });
         };
     });
 
@@ -160,9 +175,12 @@ Object.keys(models).forEach(model => {
 
             const data = await models[model].findOne({ where: { ...request.body } });
 
-            response.status(200).json({ "message": "OK", "response": data });
+            response.status(200).json({ "mensagem": "OK", "response": data });
         } catch (error) {
-            response.status(500).json({ "erro": error.message });
+            response.status(500).json({
+                "mensagem": "Ops! Não foi possível recuperar os dados. Por favor, tente novamente.",
+                "erro": error.message
+            });
         };
     });
 
@@ -176,9 +194,12 @@ Object.keys(models).forEach(model => {
 
             await models[model].update({ ...request.body, updated_at: auto.sequelize.literal('CURRENT_TIME') }, { where: { id: request.params.id } });
 
-            response.status(200).json({ "mensagem": "OK" });
+            response.status(200).json({ "mensagem": "Os dados foram atualizados com sucesso!" });
         } catch (error) {
-            response.status(500).json({ "erro": error.message });
+            response.status(500).json({
+                "mensagem": "Houve um problema ao tentar atualizar os dados. Por favor, tente novamente.",
+                "erro": error.message
+            });
         };
     });
 });

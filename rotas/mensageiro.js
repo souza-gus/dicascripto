@@ -105,18 +105,18 @@ router.post("/enviar_mensagem", upload.fields([
                     raw: true
                 });
 
-                // const imagem_path = req_files_arquivo ? process.env.URL_UPLOADS_MENSAGENS + req_files_arquivo.filename : null;
-                const imagem_path = "https://images.pexels.com/photos/1563356/pexels-photo-1563356.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1";
+                const imagem_path = req_files_arquivo ? process.env.URL_UPLOADS_MENSAGENS + req_files_arquivo.filename : null;
 
                 enviar_mensagem_midia_social(codigo, destinatario, msg, id_msg, id_midia_social_grupo.id, imagem_path);
             });
         };
 
-        // Apena usuario isso se quisse que a função fosse sincrona
+        // Apenas usar isso se quisesse que a função fosse sincrona
         // await Promise.all(promises);
 
         response.status(200).json({ "mensagem": "Mensagem criada com sucesso" });
     } catch (error) {
+        console.error("\n\n", error.message, "\n");
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -175,7 +175,7 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
 
         });
 
-        // Apena usuario isso se quisse que a função fosse sincrona
+        // Apenas usar isso se quisesse que a função fosse sincrona
         // await Promise.all(promises);
 
         response.status(200).json({ "mensagem": "OK" });
@@ -188,19 +188,56 @@ router.get("/midias_sociais_grupos/detalhado", async (request, response) => {
     try {
         /**
         * Endpoint para trazer os grupos das midias sociais de forma detalhada
+        *  @param {
+        *   pagina: int,
+        *   por_pagina: int,
+        *   filters: {},
+        *   orders: [[], []]
+        * } request.params
         */
+        // Parâmetros
+        var pagina = request.body.pagina ? request.body.pagina : null;
+        var por_pagina = request.body.por_pagina ? request.body.por_pagina : null;
+        var orders = request.body.orders ? [...request.body.orders] : null;
+        var filters = request.body.filters ? { ...request.body.filters } : null;
+
+        // Paginação
+        var count = null;
+        var total_paginas = null;
+        var offset = null;
+
+        if (!!pagina && !!por_pagina) {
+            var count = await models.midias_sociais_grupos.count();
+            var total_paginas = Math.ceil(count / por_pagina);
+            var offset = (pagina - 1) * por_pagina;
+        };
 
         const midias_sociais_grupos = await models.midias_sociais_grupos.findAll({
             include: {
                 model: models.midias_sociais,
                 as: "id_midia_social_midias_sociai"
-            }
+            },
+            limit: por_pagina,
+            offset: offset,
+            order: orders,
+            where: filters,
         }).then(midias => JSON.parse(JSON.stringify(midias, 2, null)));
 
-        response.status(200).json(midias_sociais_grupos);
+        // Retorna a resposta
+        response.status(200).json({
+            "mensagem": "OK",
+            "count": count,
+            "total_paginas": total_paginas,
+            "pagina": pagina,
+            "response": midias_sociais_grupos
+        });
+
     } catch (error) {
 
-        response.status(500).json({ "erro": error.message });
+        response.status(500).json({
+            "mensagem": "Ops! Não foi possível recuperar os dados. Por favor, tente novamente.",
+            "erro": error.message
+        });
     };
 });
 

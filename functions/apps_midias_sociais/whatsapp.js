@@ -1,4 +1,5 @@
 require("dotenv").config();
+const fetch  = require("node-fetch")
 
 const enviar_mensagem_whatsapp = (destinatario, mensagem, imagem_path) => new Promise((resolve, reject) => {
     
