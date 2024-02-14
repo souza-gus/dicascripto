@@ -1,5 +1,4 @@
-const auto = require("./banco/sinc_db");
-const models = require("./banco/tabelas/init-models")(auto.sequelize);
+const { models } = require("./banco/sinc_db");
 
 // models.sinais_sides.bulkCreate([{ nome: "buy" }, { nome: "sell" }]);
 

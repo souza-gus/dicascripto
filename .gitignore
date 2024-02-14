@@ -29,3 +29,4 @@ Thumbs.db
 # Pastas que não precrisam enviar os arquivos dentro junto
 uploads/
 banco/tabelas
+.env

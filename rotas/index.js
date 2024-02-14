@@ -1,8 +1,7 @@
 const express = require("express");
 const rota_mensageiro = require("./mensageiro");
 const rota_sinais = require("./sinais");
-const { auto } = require('../banco/sinc_db');
-const models = require("../banco/tabelas/init-models")(auto.sequelize);
+const { models, auto } = require("../banco/sinc_db");
 
 const rotas = express.Router();
 const rotas_dinamicas = express.Router();

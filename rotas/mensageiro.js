@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const { auto } = require("../banco/sinc_db");
-const models = require("../banco/tabelas/init-models")(auto.sequelize);
-const { midias_sociais_triggers } = require("../functions/mensageiro");
+const { models } = require("../banco/sinc_db");
+const { enviar_mensagem_midia_social } = require("../functions/mensageiro");
 const multer = require("multer");
+require("dotenv").config();
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -82,20 +82,41 @@ router.post("/enviar_mensagem", upload.fields([
                 return {
                     created_by: req_created_by,
                     id_mensagem: mensagem.id,
-                    id_midia_social_grupo: midia_social.id
+                    id_midia_social_grupo: midia_social.id,
+                    id_status_mensagem: 1
                 };
             });
 
             await models.midias_sociais_grupos_mensagens.bulkCreate(midias_sociais_grupos_mensagens);
 
-            req_midias_sociais.forEach(midia_social => {
-                midias_sociais_triggers[midia_social.id_midia_social_midias_sociai.codigo](midia_social.destinatario, req_mensagem);
+            // É feito dessa forma para conseguir capturar erros e usa-los como bem entender.
+            const promises = req_midias_sociais.map(async midia_social => {
+                // Envia a mensagem para cada midia_social e trata os erros de acordo.
+                const codigo = midia_social.id_midia_social_midias_sociai.codigo;
+                const destinatario = midia_social.destinatario;
+                const msg = req_mensagem;
+                const id_msg = mensagem.id;
+
+                const id_midia_social_grupo = await models.midias_sociais_grupos_mensagens.findOne({
+                    where: {
+                        id_mensagem: id_msg,
+                        id_midia_social_grupo: midia_social.id
+                    },
+                    raw: true
+                });
+
+                // const imagem_path = req_files_arquivo ? process.env.URL_UPLOADS_MENSAGENS + req_files_arquivo.filename : null;
+                const imagem_path = "https://images.pexels.com/photos/1563356/pexels-photo-1563356.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1";
+
+                enviar_mensagem_midia_social(codigo, destinatario, msg, id_msg, id_midia_social_grupo.id, imagem_path);
             });
         };
 
+        // Apena usuario isso se quisse que a função fosse sincrona
+        // await Promise.all(promises);
+
         response.status(200).json({ "mensagem": "Mensagem criada com sucesso" });
     } catch (error) {
-        console.log(console.log(error.message))
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -109,7 +130,7 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
         *   "midias_sociais": [ ...objetos da Tabela "midias_sociais_grupos" detalhado ]
         * } request.body
         * 
-        * 1202654328528044112 iddo discord para teste
+        * 1202654328528044112 id do discord para teste
         */
 
         const msg = await models.midias_sociais_mensagens.findOne({ where: { id: request.params.id_mensagem } }).then(mensagem => mensagem.toJSON());
@@ -142,31 +163,16 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
             };
 
             // Envia a mensagem para cada midia_social e trata os erros de acordo.
-            midias_sociais_triggers[midia_social.id_midia_social_midias_sociai.codigo](midia_social.destinatario, msg.mensagem)
-                .then(async data => {
-                    await models.midias_sociais_grupos_mensagens.update({
-                        id_status_mensagem: 2,
-                        updated_at: auto.sequelize.literal('CURRENT_TIME')
-                    }, {
-                        where: {
-                            id_mensagem: msg.id,
-                            id_midia_social_grupo: midia_social.id
-                        }
-                    });
-                })
-                .catch(async error => {
-                    await models.midias_sociais_grupos_mensagens.update({
-                        id_status_mensagem: 3,
-                        updated_at: auto.sequelize.literal('CURRENT_TIME')
-                    }, {
-                        where: {
-                            id_mensagem: msg.id,
-                            id_midia_social_grupo: midia_social.id
-                        }
-                    });
+            const codigo = midia_social.id_midia_social_midias_sociai.codigo;
+            const destinatario = midia_social.destinatario;
+            const mensagem = msg.mensagem;
+            const id_msg = msg.id;
+            const id_midia_social_grupo = midia_social.id;
+            const imagem = await models.midias_sociais_mensagens_arquivos.findOne({ where: { id_mensagem: id_msg }, raw: true });
+            const imagem_path = imagem ? process.env.URL_UPLOADS_MENSAGENS + imagem.arquivo : null;
 
-                    console.error("Erro durante a requisição:", error.message);
-                });
+            enviar_mensagem_midia_social(codigo, destinatario, mensagem, id_msg, id_midia_social_grupo, imagem_path);
+
         });
 
         // Apena usuario isso se quisse que a função fosse sincrona
@@ -174,7 +180,6 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
 
         response.status(200).json({ "mensagem": "OK" });
     } catch (error) {
-
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -193,6 +198,41 @@ router.get("/midias_sociais_grupos/detalhado", async (request, response) => {
         }).then(midias => JSON.parse(JSON.stringify(midias, 2, null)));
 
         response.status(200).json(midias_sociais_grupos);
+    } catch (error) {
+
+        response.status(500).json({ "erro": error.message });
+    };
+});
+
+router.get("/status_mensagens/:id_mensagem", async (request, response) => {
+    try {
+        /**
+        * Endpoint para trazer os status de envio das mensagens nas midias sociais
+        */
+
+        const status_mensagens = await models.midias_sociais_grupos_mensagens.findAll({
+            include: [{
+                model: models.grupos_mensagens_status,
+                as: "status",
+                attributes: ["nome"]
+            }, {
+                model: models.midias_sociais_grupos,
+                as: "midia_social_grupo",
+                attributes: ["nome"],
+                include: {
+                    model: models.midias_sociais,
+                    as: "midia_social",
+                    attributes: ["nome"]
+                }
+            }, {
+                model: models.midias_sociais_mensagens,
+                as: "midia_social_mensagem",
+                attributes: ["mensagem"]
+            }],
+            attributes: ["updated_at"]
+        });
+
+        response.status(200).json(status_mensagens);
     } catch (error) {
 
         response.status(500).json({ "erro": error.message });

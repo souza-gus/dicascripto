@@ -1,5 +1,4 @@
-const { auto } = require("../banco/sinc_db");
-const models = require("../banco/tabelas/init-models")(auto.sequelize);
+const { models, auto } = require("../banco/sinc_db");
 const { Op } = require('sequelize');
 const { ws_sinais_cache } = require("./sinais_cache");
 const { WebsocketStream } = require("@binance/connector");

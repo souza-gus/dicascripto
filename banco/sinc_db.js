@@ -1,5 +1,6 @@
 const SequelizeAuto = require("sequelize-auto");
 const path = require("path");
+const sobescrever = require("./sobescrever_alias_banco");
 require("dotenv").config();
 
 const auto = new SequelizeAuto(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
@@ -39,4 +40,7 @@ const sync_sequelize = async (Tabela) => {
 // Apenas descomente se for rodar o arquivo na mão: node .\banco\sinc_db.js
 // sinc_banco();
 
-module.exports = { auto, sync_sequelize };
+const models = require("../banco/tabelas/init-models")(auto.sequelize);
+sobescrever(models);
+
+module.exports = { auto, sync_sequelize, models };

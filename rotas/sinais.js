@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auto, sync_sequelize } = require("../banco/sinc_db");
-const models = require("../banco/tabelas/init-models")(auto.sequelize);
+const { models } = require("../banco/sinc_db");
 const { WebsocketStream } = require("@binance/connector");
 const { midias_sociais_triggers } = require('../functions/mensageiro');
 const multer = require("multer");
