@@ -1,4 +1,6 @@
-const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("discord.js");
+const fs = require('fs');
+const path = require('path');
 require("dotenv").config();
 
 const Bot = new Client({
@@ -16,11 +18,19 @@ const enviar_mensagem_discord = (destinatario, mensagem, imagem_path) => new Pro
 
         const channel = await Bot.channels.fetch(destinatario);
 
-        let embedMensagem = new EmbedBuilder()
-            .setDescription(mensagem)
-            .setImage(imagem_path);
+        const embedMensagem = new EmbedBuilder().setDescription(mensagem);
 
-        await channel.send({ embeds: [embedMensagem] });
+        if (!!imagem_path) {
+            var arquivo = process.env.PROTOCOLO_SERVIDOR === "HTTP" ?
+                new AttachmentBuilder(fs.readFileSync(imagem_path), { name: path.basename(imagem_path) }) : null;
+
+            embedMensagem.setImage(process.env.PROTOCOLO_SERVIDOR === "HTTP" ?
+                `attachment://${path.basename(imagem_path)}` : imagem_path);
+
+            await channel.send({ embeds: [embedMensagem], files: [arquivo] });
+        } else {
+            await channel.send({ embeds: [embedMensagem] });
+        };
 
         await Bot.destroy();
 

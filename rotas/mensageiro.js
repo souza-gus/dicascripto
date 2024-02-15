@@ -3,6 +3,7 @@ const router = express.Router();
 const { models } = require("../banco/sinc_db");
 const { enviar_mensagem_midia_social } = require("../functions/mensageiro");
 const multer = require("multer");
+const path = require("path");
 require("dotenv").config();
 
 const storage = multer.diskStorage({
@@ -47,7 +48,7 @@ router.post("/enviar_mensagem", upload.fields([
 
         // Salva o arquivo da mensagem no banco de dados
         if (!!req_files_arquivo) {
-            await models.midias_socias_mensagens_arquivos.create({
+            await models.midias_sociais_mensagens_arquivos.create({
                 arquivo: req_files_arquivo.filename,
                 created_by: req_created_by,
                 id_mensagem: mensagem.id
@@ -57,7 +58,7 @@ router.post("/enviar_mensagem", upload.fields([
         // Salva os arquivos da mensagem no banco de dados
         if (!!req_files_arquivos) {
             req_files_arquivos.forEach(async (arquivo) => {
-                await models.midias_socias_mensagens_arquivos.create({
+                await models.midias_sociais_mensagens_arquivos.create({
                     arquivo: arquivo.filename,
                     created_by: req_created_by,
                     id_mensagem: mensagem.id
@@ -96,6 +97,7 @@ router.post("/enviar_mensagem", upload.fields([
                 const destinatario = midia_social.destinatario;
                 const msg = req_mensagem;
                 const id_msg = mensagem.id;
+                var imagem_path = null;
 
                 const id_midia_social_grupo = await models.midias_sociais_grupos_mensagens.findOne({
                     where: {
@@ -105,7 +107,13 @@ router.post("/enviar_mensagem", upload.fields([
                     raw: true
                 });
 
-                const imagem_path = req_files_arquivo ? process.env.URL_UPLOADS_MENSAGENS + req_files_arquivo.filename : null;
+                if (!!req_files_arquivo) {
+                    if (process.env.PROTOCOLO_SERVIDOR === "HTTP") {
+                        imagem_path = path.join(process.cwd(), process.env.PATH_UPLOADS_MENSAGENS, req_files_arquivo.filename);
+                    } else {
+                        imagem_path = `${process.env.URL_UPLOADS_MENSAGENS}/${req_files_arquivo.filename}`;
+                    };
+                };
 
                 enviar_mensagem_midia_social(codigo, destinatario, msg, id_msg, id_midia_social_grupo.id, imagem_path);
             });
@@ -116,7 +124,7 @@ router.post("/enviar_mensagem", upload.fields([
 
         response.status(200).json({ "mensagem": "Mensagem criada com sucesso" });
     } catch (error) {
-        console.error("\n\n", error.message, "\n");
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
     };
 });

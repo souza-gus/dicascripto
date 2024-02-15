@@ -16,31 +16,35 @@ const midias_sociais_triggers = {
 };
 
 const enviar_mensagem_midia_social = (codigo, destinatario, mensagem, id_msg, id_midia_social_grupo, imagem_path) => {
-    midias_sociais_triggers[codigo](destinatario, mensagem, imagem_path)
-        .then(async data => {
-            await models.midias_sociais_grupos_mensagens.update({
-                id_status_mensagem: 2,
-                updated_at: auto.sequelize.literal('CURRENT_TIME')
-            }, {
-                where: {
-                    id_mensagem: id_msg,
-                    id_midia_social_grupo: id_midia_social_grupo
-                }
-            });
-        })
-        .catch(async error => {
-            await models.midias_sociais_grupos_mensagens.update({
-                id_status_mensagem: 3,
-                updated_at: auto.sequelize.literal('CURRENT_TIME')
-            }, {
-                where: {
-                    id_mensagem: id_msg,
-                    id_midia_social_grupo: id_midia_social_grupo
-                }
-            });
+    try {
+        midias_sociais_triggers[codigo](destinatario, mensagem, imagem_path)
+            .then(async data => {
+                await models.midias_sociais_grupos_mensagens.update({
+                    id_status_mensagem: 2,
+                    updated_at: auto.sequelize.literal('CURRENT_TIME')
+                }, {
+                    where: {
+                        id_mensagem: id_msg,
+                        id_midia_social_grupo: id_midia_social_grupo
+                    }
+                });
+            })
+            .catch(async error => {
+                await models.midias_sociais_grupos_mensagens.update({
+                    id_status_mensagem: 3,
+                    updated_at: auto.sequelize.literal('CURRENT_TIME')
+                }, {
+                    where: {
+                        id_mensagem: id_msg,
+                        id_midia_social_grupo: id_midia_social_grupo
+                    }
+                });
 
-            console.error("Erro durante a requisição:", error.message);
-        });
+                console.error("\x1b[91m%s\x1b[0m", `Codigo da midia social: ${codigo}\nErro durante a requisição: ${error.message}`);
+            });
+    } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
+    };
 };
 
 module.exports = {
