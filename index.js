@@ -3,10 +3,12 @@ const body_parser = require("body-parser");
 const rotas = require("./rotas/index");
 const path = require("path");
 const { inicializa_monitoramento_sinais } = require("./functions/sinais");
+const cors = require('cors');
 require("dotenv").config();
 
 const app = express();
 
+app.use(cors());
 app.use(body_parser.json());
 app.use(body_parser.urlencoded({ extended: true }));
 app.use("/", rotas);

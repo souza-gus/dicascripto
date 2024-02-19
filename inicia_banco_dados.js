@@ -8,14 +8,20 @@ const { models } = require("./banco/sinc_db");
 models.grupos_mensagens_status.bulkCreate([
     {
         id: 1,
-        nome: "Em Andamento"
+        nome: "Enviando",
+        background_cor: "#BBDEFB",
+        fonte_cor: "#1b417a"
     }, {
         id: 2,
-        nome: "Concluído"
+        nome: "Enviado",
+        background_cor: "#E0F2F1",
+        fonte_cor: "#00796B"
     },
     {
         id: 3,
-        nome: "Falhou"
+        nome: "Falhou",
+        background_cor: "#FFCDD2",
+        fonte_cor: "#D32F2F"
     }
 ]);
 
@@ -90,14 +96,23 @@ models.midias_sociais.bulkCreate([
     {
         id: 1,
         nome: "WhatsApp",
-        codigo: "wpp"
+        codigo: "wpp",
+        logo: "https://dicascripto.com/uploads/logos/whatsapp_logo.png",
+        background_cor: "#94E49F",
+        fonte_cor: "#0B5E16"
     }, {
         id: 2,
         nome: "Telegram",
-        codigo: "tgram"
+        codigo: "tgram",
+        logo: "https://dicascripto.com/uploads/logos/telegram_logo.png",
+        background_cor: "#9adffb",
+        fonte_cor: "#066481"
     }, {
         id: 3,
         nome: "Discord",
-        codigo: "disc"
+        codigo: "disc",
+        logo: "https://dicascripto.com/uploads/logos/discord_logo.png",
+        background_cor: "#d6d6f9",
+        fonte_cor: "#4f4dff"
     }
 ]);

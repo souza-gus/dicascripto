@@ -1,6 +1,7 @@
 const express = require("express");
 const rota_mensageiro = require("./mensageiro");
 const rota_sinais = require("./sinais");
+const rota_analise_carteira = require("./analise_carteira");
 const { models, auto } = require("../banco/sinc_db");
 
 const rotas = express.Router();
@@ -120,8 +121,8 @@ Object.keys(models).forEach(model => {
             *   pagina: int,
             *   por_pagina: int,
             *   filters: {},
-            *   orders: [[], []]
-            * } request.params
+            *   orders: [["created_at", "DESC"], []]
+            * } request.body
             */
 
             // Parâmetros
@@ -207,5 +208,6 @@ Object.keys(models).forEach(model => {
 rotas.use("", rotas_dinamicas);
 rotas.use("/mensageiro", rota_mensageiro);
 rotas.use("/sinais", rota_sinais);
+rotas.use("/analise_carteira", rota_analise_carteira);
 
 module.exports = rotas;

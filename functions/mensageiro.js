@@ -19,6 +19,7 @@ const enviar_mensagem_midia_social = (codigo, destinatario, mensagem, id_msg, id
     try {
         midias_sociais_triggers[codigo](destinatario, mensagem, imagem_path)
             .then(async data => {
+
                 await models.midias_sociais_grupos_mensagens.update({
                     id_status_mensagem: 2,
                     updated_at: auto.sequelize.literal('CURRENT_TIME')

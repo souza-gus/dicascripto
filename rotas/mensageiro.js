@@ -1,22 +1,26 @@
 const express = require("express");
 const router = express.Router();
-const { models } = require("../banco/sinc_db");
+const { models, auto } = require("../banco/sinc_db");
 const { enviar_mensagem_midia_social } = require("../functions/mensageiro");
 const multer = require("multer");
-const path = require("path");
+const { ftp_upload_arquivo } = require("../functions/ftp");
+const { pegar_chats_whatsapp } = require("../functions/apps_midias_sociais/whatsapp");
 require("dotenv").config();
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, "uploads/mensagens");
-    },
-    filename: (req, file, cb) => {
-        const fileName = `${Date.now()}-${file.originalname}`;
-        cb(null, fileName);
-    },
-});
+// const storage = multer.diskStorage({
+//     destination: (req, file, cb) => {
+//         cb(null, "uploads/mensagens");
+//     },
+//     filename: (req, file, cb) => {
+//         const fileName = `${Date.now()}-${file.originalname}`;
+//         cb(null, fileName);
+//     },
+// });
 
-const upload = multer({ storage });
+// const upload = multer({ storage });
+
+const memoryStorage = multer.memoryStorage();
+const upload = multer({ storage: memoryStorage });
 
 router.post("/enviar_mensagem", upload.fields([
     { name: "arquivos", maxCount: 5 },
@@ -48,18 +52,32 @@ router.post("/enviar_mensagem", upload.fields([
 
         // Salva o arquivo da mensagem no banco de dados
         if (!!req_files_arquivo) {
-            await models.midias_sociais_mensagens_arquivos.create({
-                arquivo: req_files_arquivo.filename,
-                created_by: req_created_by,
-                id_mensagem: mensagem.id
-            });
+            const nome_arquivo = `${new Date().getTime()}-${req_files_arquivo.originalname.replace(/\s+/g, '-')}`;
+            const url_ftp = process.env.FTP_URL;
+            const url_ftp_mensagens = process.env.FTP_UPLOADS_MENSAGENS;
+            var url_completa = `${url_ftp}/${url_ftp_mensagens}/${nome_arquivo}`;
+
+            await ftp_upload_arquivo(req_files_arquivo.buffer, `${url_ftp_mensagens}/${nome_arquivo}`)
+                .then(async () => {
+                    await models.midias_sociais_mensagens_arquivos.create({
+                        arquivo: url_completa,
+                        created_by: req_created_by,
+                        id_mensagem: mensagem.id
+                    });
+                });
         };
 
         // Salva os arquivos da mensagem no banco de dados
         if (!!req_files_arquivos) {
+            const url_ftp = process.env.FTP_URL;
+            const url_ftp_mensagens = process.env.FTP_UPLOADS_MENSAGENS;
+
             req_files_arquivos.forEach(async (arquivo) => {
+                var nome_arquivo = `${new Date().getTime()}-${arquivo.originalname.replace(/\s+/g, '-')}`;
+                var url_completa = `${url_ftp}/${url_ftp_mensagens}/${nome_arquivo}`;
+
                 await models.midias_sociais_mensagens_arquivos.create({
-                    arquivo: arquivo.filename,
+                    arquivo: url_completa,
                     created_by: req_created_by,
                     id_mensagem: mensagem.id
                 });
@@ -69,12 +87,21 @@ router.post("/enviar_mensagem", upload.fields([
         // Constroi o objeto de categorias da mensagem para salavar no banco em "bulk"
         if (!!req_mensagem_categorias) {
 
-            const categorias_mensagem = await req_mensagem_categorias.map(categoria => {
-                return { id_mensagem: mensagem.id, id_categoria_mensagem: categoria.id, created_by: req_created_by }
-            });
+            if (Array.isArray(req_mensagem_categorias)) {
+                const categorias_mensagem = req_mensagem_categorias.map(categoria => {
+                    return { id_mensagem: mensagem.id, id_categoria_mensagem: categoria.id, created_by: req_created_by }
+                });
 
-            // Cria as categorias dessa mensagem no banco
-            await models.midias_sociais_mensagens_categorias.bulkCreate(categorias_mensagem);
+                // Cria as categorias dessa mensagem no banco
+                await models.midias_sociais_mensagens_categorias.bulkCreate(categorias_mensagem);
+            } else {
+                // Cria as categorias dessa mensagem no banco
+                await models.midias_sociais_mensagens_categorias.create({
+                    id_mensagem: mensagem.id,
+                    id_categoria_mensagem: req_mensagem_categorias.id,
+                    created_by: req_created_by
+                });
+            };
         };
 
         // Mandar a mensagem nas midias sociais selecionadas
@@ -97,7 +124,7 @@ router.post("/enviar_mensagem", upload.fields([
                 const destinatario = midia_social.destinatario;
                 const msg = req_mensagem;
                 const id_msg = mensagem.id;
-                var imagem_path = null;
+                var imagem_path = req_files_arquivo ? url_completa : null;
 
                 const id_midia_social_grupo = await models.midias_sociais_grupos_mensagens.findOne({
                     where: {
@@ -107,22 +134,14 @@ router.post("/enviar_mensagem", upload.fields([
                     raw: true
                 });
 
-                if (!!req_files_arquivo) {
-                    if (process.env.PROTOCOLO_SERVIDOR === "HTTP") {
-                        imagem_path = path.join(process.cwd(), process.env.PATH_UPLOADS_MENSAGENS, req_files_arquivo.filename);
-                    } else {
-                        imagem_path = `${process.env.URL_UPLOADS_MENSAGENS}/${req_files_arquivo.filename}`;
-                    };
-                };
-
-                enviar_mensagem_midia_social(codigo, destinatario, msg, id_msg, id_midia_social_grupo.id, imagem_path);
+                enviar_mensagem_midia_social(codigo, destinatario, msg, id_msg, id_midia_social_grupo.id_midia_social_grupo, imagem_path);
             });
         };
 
         // Apenas usar isso se quisesse que a função fosse sincrona
         // await Promise.all(promises);
 
-        response.status(200).json({ "mensagem": "Mensagem criada com sucesso" });
+        response.status(200).json({ "mensagem": "Mensagem criada com sucesso", "id_mensagem": mensagem.id });
     } catch (error) {
         console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
@@ -177,7 +196,7 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
             const id_msg = msg.id;
             const id_midia_social_grupo = midia_social.id;
             const imagem = await models.midias_sociais_mensagens_arquivos.findOne({ where: { id_mensagem: id_msg }, raw: true });
-            const imagem_path = imagem ? process.env.URL_UPLOADS_MENSAGENS + imagem.arquivo : null;
+            const imagem_path = imagem.arquivo ?? null;
 
             enviar_mensagem_midia_social(codigo, destinatario, mensagem, id_msg, id_midia_social_grupo, imagem_path);
 
@@ -200,14 +219,15 @@ router.get("/midias_sociais_grupos/detalhado", async (request, response) => {
         *   pagina: int,
         *   por_pagina: int,
         *   filters: {},
-        *   orders: [[], []]
+        *   orders: [["created_at", "DESC"], []]
         * } request.params
         */
+
         // Parâmetros
-        var pagina = request.body.pagina ? request.body.pagina : null;
-        var por_pagina = request.body.por_pagina ? request.body.por_pagina : null;
-        var orders = request.body.orders ? [...request.body.orders] : null;
-        var filters = request.body.filters ? { ...request.body.filters } : null;
+        var pagina = request.body.pagina || request.query.pagina || null;
+        var por_pagina = request.body.por_pagina || request.query.por_pagina || null;
+        var orders = request.body.orders || request.query.orders ? [...(request.body.orders || JSON.parse(request.query.orders))] : null;
+        var filters = request.body.filters || request.query.filters ? { ...(request.body.filters || JSON.parse(request.query.filters)) } : null;
 
         // Paginação
         var count = null;
@@ -249,35 +269,68 @@ router.get("/midias_sociais_grupos/detalhado", async (request, response) => {
     };
 });
 
-router.get("/status_mensagens/:id_mensagem", async (request, response) => {
+router.get("/status_envios_mensagem/:id_mensagem", async (request, response) => {
     try {
         /**
         * Endpoint para trazer os status de envio das mensagens nas midias sociais
         */
 
-        const status_mensagens = await models.midias_sociais_grupos_mensagens.findAll({
+        const status_envios_mensagem = await models.midias_sociais_grupos_mensagens.findAll({
+            where: { id_mensagem: request.params.id_mensagem },
+            attributes: ["updated_at"],
             include: [{
                 model: models.grupos_mensagens_status,
                 as: "status",
-                attributes: ["nome"]
+                attributes: ["nome", "background_cor", "fonte_cor"]
             }, {
                 model: models.midias_sociais_grupos,
                 as: "midia_social_grupo",
-                attributes: ["nome"],
+                attributes: ["nome", "descricao"],
                 include: {
                     model: models.midias_sociais,
                     as: "midia_social",
-                    attributes: ["nome"]
+                    attributes: ["nome", "logo", "background_cor", "fonte_cor"]
                 }
             }, {
                 model: models.midias_sociais_mensagens,
                 as: "midia_social_mensagem",
                 attributes: ["mensagem"]
-            }],
-            attributes: ["updated_at"]
+            }]
         });
 
-        response.status(200).json(status_mensagens);
+        // Retorna a resposta
+        response.status(200).json({
+            "mensagem": "OK",
+            "count": null,
+            "total_paginas": null,
+            "pagina": null,
+            "response": status_envios_mensagem
+        });
+
+    } catch (error) {
+
+        response.status(500).json({ "erro": error.message });
+    };
+});
+
+router.get("/pegar_chats_wahtsapp", async (request, response) => {
+    try {
+        /**
+        * Endpoint para trazer todos os chats do whatsapp
+        */
+
+        const grupos = await models.midias_sociais_grupos.findAll({attributes: ["destinatario"]}).then(grupos => {
+            return grupos.map(grupo => grupo.destinatario);
+        });
+
+        var chats = await pegar_chats_whatsapp();
+        chats = chats.filter(chat => !grupos.includes(chat.phone));
+        
+        response.status(200).json({
+            "mensagem": "OK",
+            "response": chats
+        });
+
     } catch (error) {
 
         response.status(500).json({ "erro": error.message });
