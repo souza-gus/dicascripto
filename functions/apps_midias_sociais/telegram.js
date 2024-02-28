@@ -3,8 +3,8 @@ const fs = require('fs');
 require("dotenv").config();
 
 function formatarTextoParaTelegram(texto) {
-    // Substitui [b] e [/b] por **, removendo espaços extras ao redor das palavras em negrito
-    return texto.replace(/\[b\]\s*/g, '**').replace(/\s*\[\/b\]/g, '**');
+    // Substitui [b] e [/b] por *, removendo espaços extras ao redor das palavras em negrito
+    return texto.replace(/\[b\]\s*/g, '*').replace(/\s*\[\/b\]/g, '*');
 };
 
 const enviar_mensagem_telegram = (destinatario, mensagem, imagem_path) => new Promise((resolve, reject) => {

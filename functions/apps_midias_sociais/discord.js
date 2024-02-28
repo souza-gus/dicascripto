@@ -29,7 +29,6 @@ const enviar_mensagem_discord = (destinatario, mensagem, imagem_path) => new Pro
         const embedOptions = { embeds: [embedMensagem] };
 
         if (imagem_path) {
-            console.log(imagem_path)
 
             if (process.env.FILE_STORAGE_PROVIDER === "FTP") {
                 embedOptions.embeds[0].setImage(imagem_path);
