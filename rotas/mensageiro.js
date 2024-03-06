@@ -1,10 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const { models, auto } = require("../banco/sinc_db");
-const { enviar_mensagem_midia_social } = require("../functions/mensageiro");
+const { models } = require("../banco/sinc_db");
+const { enviar_mensagem_midia_social, enviar_mensagem } = require("../functions/mensageiro");
 const multer = require("multer");
-const { ftp_upload_arquivo } = require("../functions/ftp");
-const { pegar_chats_whatsapp } = require("../functions/apps_midias_sociais/whatsapp");
+const { pegar_chats_whatsapp, enviar_mensagem_whatsapp } = require("../functions/apps_midias_sociais/whatsapp");
 require("dotenv").config();
 
 // const storage = multer.diskStorage({
@@ -37,111 +36,9 @@ router.post("/enviar_mensagem", upload.fields([
         * } request.body
         */
 
-        const req_created_by = request.body.created_by ?? undefined;
-        const req_mensagem = request.body.mensagem;
-        const req_mensagem_categorias = JSON.parse(request.body.mensagem_categorias ?? null);
-        const req_midias_sociais = JSON.parse(request.body.midias_sociais ?? null);
-        const req_files_arquivos = request.files.arquivos; // Se um dia for usar js para consumir a API       
-        const req_files_arquivo = request.files.arquivo?.[0] ?? null; // O bubble aceita enviar apenas um arquivo por vez
+        const id_mensagem = await enviar_mensagem(request);
 
-        // Cria a mensagem no banco
-        const mensagem = await models.midias_sociais_mensagens.create({
-            mensagem: req_mensagem,
-            created_by: req_created_by
-        }).then(mensagem => mensagem.toJSON());
-
-        // Salva o arquivo da mensagem no banco de dados
-        if (!!req_files_arquivo) {
-            const nome_arquivo = `${new Date().getTime()}-${req_files_arquivo.originalname.replace(/\s+/g, '-')}`;
-            const url_ftp = process.env.FTP_URL;
-            const url_ftp_mensagens = process.env.FTP_UPLOADS_MENSAGENS;
-            var url_completa = `${url_ftp}/${url_ftp_mensagens}/${nome_arquivo}`;
-
-            await ftp_upload_arquivo(req_files_arquivo.buffer, `${url_ftp_mensagens}/${nome_arquivo}`)
-                .then(async () => {
-                    await models.midias_sociais_mensagens_arquivos.create({
-                        arquivo: url_completa,
-                        created_by: req_created_by,
-                        id_mensagem: mensagem.id
-                    });
-                });
-        };
-
-        // Salva os arquivos da mensagem no banco de dados
-        if (!!req_files_arquivos) {
-            const url_ftp = process.env.FTP_URL;
-            const url_ftp_mensagens = process.env.FTP_UPLOADS_MENSAGENS;
-
-            req_files_arquivos.forEach(async (arquivo) => {
-                var nome_arquivo = `${new Date().getTime()}-${arquivo.originalname.replace(/\s+/g, '-')}`;
-                var url_completa = `${url_ftp}/${url_ftp_mensagens}/${nome_arquivo}`;
-
-                await models.midias_sociais_mensagens_arquivos.create({
-                    arquivo: url_completa,
-                    created_by: req_created_by,
-                    id_mensagem: mensagem.id
-                });
-            });
-        };
-
-        // Constroi o objeto de categorias da mensagem para salavar no banco em "bulk"
-        if (!!req_mensagem_categorias) {
-
-            if (Array.isArray(req_mensagem_categorias)) {
-                const categorias_mensagem = req_mensagem_categorias.map(categoria => {
-                    return { id_mensagem: mensagem.id, id_categoria_mensagem: categoria.id, created_by: req_created_by }
-                });
-
-                // Cria as categorias dessa mensagem no banco
-                await models.midias_sociais_mensagens_categorias.bulkCreate(categorias_mensagem);
-            } else {
-                // Cria as categorias dessa mensagem no banco
-                await models.midias_sociais_mensagens_categorias.create({
-                    id_mensagem: mensagem.id,
-                    id_categoria_mensagem: req_mensagem_categorias.id,
-                    created_by: req_created_by
-                });
-            };
-        };
-
-        // Mandar a mensagem nas midias sociais selecionadas
-        if (!!req_midias_sociais) {
-            const midias_sociais_grupos_mensagens = req_midias_sociais.map(midia_social => {
-                return {
-                    created_by: req_created_by,
-                    id_mensagem: mensagem.id,
-                    id_midia_social_grupo: midia_social.id,
-                    id_status_mensagem: 1
-                };
-            });
-
-            await models.midias_sociais_grupos_mensagens.bulkCreate(midias_sociais_grupos_mensagens);
-
-            // É feito dessa forma para conseguir capturar erros e usa-los como bem entender.
-            const promises = req_midias_sociais.map(async midia_social => {
-                // Envia a mensagem para cada midia_social e trata os erros de acordo.
-                const codigo = midia_social.id_midia_social_midias_sociai.codigo;
-                const destinatario = midia_social.destinatario;
-                const msg = req_mensagem;
-                const id_msg = mensagem.id;
-                var imagem_path = req_files_arquivo ? url_completa : null;
-
-                const id_midia_social_grupo = await models.midias_sociais_grupos_mensagens.findOne({
-                    where: {
-                        id_mensagem: id_msg,
-                        id_midia_social_grupo: midia_social.id
-                    },
-                    raw: true
-                });
-
-                enviar_mensagem_midia_social(codigo, destinatario, msg, id_msg, id_midia_social_grupo.id_midia_social_grupo, imagem_path);
-            });
-        };
-
-        // Apenas usar isso se quisesse que a função fosse sincrona
-        // await Promise.all(promises);
-
-        response.status(200).json({ "mensagem": "Mensagem criada com sucesso", "id_mensagem": mensagem.id });
+        response.status(200).json({ "mensagem": "Mensagem criada com sucesso", id_mensagem });
     } catch (error) {
         console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
@@ -319,13 +216,13 @@ router.get("/pegar_chats_wahtsapp", async (request, response) => {
         * Endpoint para trazer todos os chats do whatsapp
         */
 
-        const grupos = await models.midias_sociais_grupos.findAll({attributes: ["destinatario"]}).then(grupos => {
+        const grupos = await models.midias_sociais_grupos.findAll({ attributes: ["destinatario"] }).then(grupos => {
             return grupos.map(grupo => grupo.destinatario);
         });
 
         var chats = await pegar_chats_whatsapp();
         chats = chats.filter(chat => !grupos.includes(chat.phone));
-        
+
         response.status(200).json({
             "mensagem": "OK",
             "response": chats
@@ -334,6 +231,42 @@ router.get("/pegar_chats_wahtsapp", async (request, response) => {
     } catch (error) {
 
         response.status(500).json({ "erro": error.message });
+    };
+});
+
+router.post("/enviar_mensagem_simples", async (request, response) => {
+    try {
+        /**
+        * Endpoint para enviar uma mensagem que não será salva no banco de dados.
+        * @param {
+        *   "mensagem": "Certo",
+        *   "destinatarios": [
+        *       {
+        *           "codigo": "wpp",
+        *           "destinatario": "5518998085885"
+        *      },
+        *   ]
+        * } request.body
+        */
+
+        const req_destinatarios = typeof request.body.destinatarios === "string" ? JSON.parse(request.body.destinatarios) : request.body.destinatarios;
+
+        req_destinatarios.forEach(dest => {
+            if (dest.codigo === "wpp") {
+                enviar_mensagem_whatsapp(dest.destinatario, request.body.mensagem);
+            };
+        });
+
+        response.status(200).json({
+            "mensagem": "OK",
+            "response": null
+        });
+
+    } catch (error) {
+        response.status(500).json({
+            "mensagem": "Não foi possível encaminhar a senha ao destinatário.",
+            "erro": error.message
+        });
     };
 });
 

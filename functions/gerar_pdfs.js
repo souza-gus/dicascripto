@@ -1,6 +1,6 @@
 const mensagem_enorme = `**Análise Realizada de Curto Prazo**
 
-**OBSERVAÇÃO**: A criptomoeda BTC mostra-se equilibrada, **revela** nossa inteligência artificial. Refinamentos nas alocações atuais podem desbloquear valorizações futuras, de acordo com análises de tendência. Aguarde as propostas de nossa I.A para realocações ao término desta análise.
+**OBSERVAÇÃO**: A https://dicascripto.com criptomoeda BTC mostra-se equilibrada, **revela** nossa inteligência artificial. Refinamentos nas alocações atuais podem desbloquear valorizações futuras, de acordo com análises de tendência. Aguarde as propostas de nossa I.A para realocações ao término desta análise.
 
 OBSERVAÇÃO: A criptomoeda ETH mostra-se equilibrada, revela nossa inteligência artificial. Refinamentos nas alocações atuais podem desbloquear valorizações futuras, de acordo com análises de tendência. Aguarde as propostas de nossa I.A para realocações ao término desta análise.
 
@@ -60,63 +60,73 @@ ALERTA MÁXIMO! A avaliação feita pela nossa I.A destaca a criptomoeda  num n�
 ANÁLISE: A criptomoeda XRP encontra-se estável, segundo nossa inteligência artificial. Ajustes estratégicos nas alocações podem ser benéficos para aproveitar futuras oportunidades de crescimento, baseando-se em projeções de mercado. Explore as sugestões de realocação preparadas pela nossa I.A no encerramento desta análise.
 
 
-Estas sugestões de ajustes não constitui uma recomendação direta de investimento.`;
+Estas sugestões de ajustes não constitui uma recomendação direta de investimento.
+`;
 
-function addFormattedTextBackup(doc, text) {
-    // Esta função serve para seguir o pdf original
+// function addFormattedTextBackup(doc, text) {
+//     // Divide o texto em parágrafos
+//     const paragraphs = text.split('\n').filter(p => p.length > 0);
 
-    // Divide o texto em parágrafos
-    const paragraphs = text.split('\n');
+//     paragraphs.forEach((paragraph, index) => {
+//         // Verifica se é necessário adicionar uma quebra de linha entre parágrafos
+//         if (index > 0) {
+//             doc.moveDown(2.2); // Move para baixo para criar um espaço entre os parágrafos
+//         }
 
-    paragraphs.forEach((paragraph, index) => {
-        // Verifica se o parágrafo atual não é o primeiro e adiciona uma quebra de linha
-        if (index > 0) {
-            doc.moveDown(); // Isso adiciona uma quebra de linha entre parágrafos
-        }
+//         const parts = paragraph.split('**');
+//         let isBold = false;
 
-        // Processa o negrito dentro do parágrafo
-        const parts = paragraph.split('**');
-        let isBold = false;
+//         parts.forEach(part => {
+//             // Reinicia o estado contínuo para cada nova parte
+//             const options = isBold ? { continued: true, indent: 0 } : { continued: true, indent: 0 };
 
-        parts.forEach(part => {
-            if (part) { // Ignora strings vazias para evitar adicionar espaços extras
-                if (isBold) {
-                    // Parte em negrito
-                    doc.font('Helvetica-Bold').text(part, { continued: true });
-                } else {
-                    // Parte normal
-                    doc.font('Helvetica').text(part, { continued: true });
-                }
-            }
-            // Alternar entre negrito e normal
-            isBold = !isBold;
-        });
+//             if (isBold) {
+//                 // Parte em negrito
+//                 doc.font('uploads/fonts/Montserrat-Bold.ttf').text(part, options).fontSize(12).fillColor('black');
+//             } else {
+//                 // Parte normal
+//                 doc.font('uploads/fonts/Montserrat-Regular.ttf').text(part, options).fontSize(12).fillColor('black');
+//             }
 
-        // Finaliza a parte atual no PDF, preparando para o próximo parágrafo
-        // O 'continued: false' é importante para evitar que o texto do próximo parágrafo comece na mesma linha
-        doc.text('', { continued: false });
-    });
-};
+//             // Alternar entre negrito e normal
+//             isBold = !isBold;
+//         });
+
+//         // Finaliza o parágrafo atual no PDF
+//         doc.text('', { continued: false });
+//     });
+// }
 
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
-function save_and_convert_to_base64(doc, pdf_path) {
+function convertToBase64(doc) {
+    return new Promise((resolve, reject) => {
+        // Cria um buffer para armazenar o PDF em memória
+        const buffers = [];
+        doc.on('data', buffers.push.bind(buffers));
+        doc.on('end', () => {
+            const pdfData = Buffer.concat(buffers);
+            const base64 = pdfData.toString('base64');
+            resolve(base64);
+        });
+        // Finaliza o documento e escreve no buffer
+        doc.end();
+
+        // Captura erros
+        doc.on('error', reject);
+    });
+}
+
+function savePDF(doc, pdf_path) {
     return new Promise((resolve, reject) => {
         const stream = fs.createWriteStream(pdf_path);
         doc.pipe(stream);
         doc.end();
 
-        stream.on('finish', () => {
-            fs.readFile(pdf_path, { encoding: 'base64' }, (err, data) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(data);
-                }
-            });
-        });
+        stream.on('finish', () => resolve(true));
+        stream.on('error', reject);
     });
 }
 
@@ -129,31 +139,30 @@ function addPageBackground(doc) {
     const lightBlue = '#ADD8E6';
 
     // Desenha um retângulo que cobre toda a página com a cor definida
-    doc.rect(0, 0, pageWidth, pageHeight).fill(lightBlue);
+    doc.rect(0, 0, pageWidth, pageHeight).fill("#ffffff");
 };
 
 // Função auxiliar para adicionar cabeçalho em cada página
 function addHeader(doc, imagePath) {
     const pageWidth = doc.page.width;
-    const logoSize = { width: 30, height: 30 };
+    const logoSize = { width: pageWidth, height: 30 };
     const logoX = (pageWidth / 2) - (logoSize.width / 2);
-    const logoY = 15;
-    doc.image(imagePath, logoX, logoY, { width: logoSize.width, height: logoSize.height });
+    const logoY = 0;
+    doc.image(imagePath, logoX, logoY, { width: logoSize.width });
 }
 
 // Função auxiliar para adicionar rodapé em cada página
 function addFooter(doc, imagePath) {
     const pageWidth = doc.page.width;
     const pageHeight = doc.page.height;
-    const logoSize = { width: 30, height: 30 }; // Ajuste conforme necessário
+    const logoSize = { width: pageWidth }; // Ajuste conforme necessário
     const logoX = (pageWidth / 2) - (logoSize.width / 2);
-    const logoY = pageHeight - logoSize.height - 30; // Ajuste o valor para posicionar conforme desejado
+    const logoY = pageHeight - 840; // Ajuste o valor para posicionar conforme desejado
 
-    doc.image(imagePath, logoX, logoY, { width: logoSize.width, height: logoSize.height });
+    doc.image(imagePath, logoX, logoY, { width: logoSize.width });
 }
 
 // Função para processar e adicionar texto ao documento
-
 function addFormattedText(doc, text) {
     // Divide o texto em parágrafos
     const paragraphs = text.split('\n').filter(p => p.length > 0);
@@ -168,15 +177,35 @@ function addFormattedText(doc, text) {
         let isBold = false;
 
         parts.forEach(part => {
-            // Reinicia o estado contínuo para cada nova parte
-            const options = isBold ? { continued: true, indent: 0 } : { continued: true, indent: 0 };
+            // Verifica se a parte contém um URL
+            const urlRegex = /https?:\/\/[^\s]+/g;
+            let match;
 
-            if (isBold) {
-                // Parte em negrito
-                doc.font('Helvetica-Bold').text(part, options);
-            } else {
-                // Parte normal
-                doc.font('Helvetica').text(part, options);
+            // Processa o texto normal ou em negrito, procurando por URLs
+            while ((match = urlRegex.exec(part)) !== null) {
+                // Texto antes do URL, se houver
+                const textBeforeUrl = part.substring(0, match.index);
+                if (textBeforeUrl) {
+                    doc.font(isBold ? 'uploads/fonts/Montserrat-Bold.ttf' : 'uploads/fonts/Montserrat-Regular.ttf')
+                        .fillColor('black')
+                        .text(textBeforeUrl, { continued: true });
+                }
+
+                // O URL
+                doc.font('uploads/fonts/Montserrat-Regular.ttf')
+                    .fillColor('blue')
+                    .text(match[0], { link: match[0], continued: true, underline: true });
+
+                // Atualiza a posição de início para depois do URL
+                part = part.substring(match.index + match[0].length);
+                urlRegex.lastIndex = 0; // Reseta o regex para a próxima busca
+            }
+
+            // Texto restante após o último URL, ou o texto inteiro se não houver URL
+            if (part) {
+                doc.font(isBold ? 'uploads/fonts/Montserrat-Bold.ttf' : 'uploads/fonts/Montserrat-Regular.ttf')
+                    .fillColor('black')
+                    .text(part, { continued: true, underline: false });
             }
 
             // Alternar entre negrito e normal
@@ -188,41 +217,76 @@ function addFormattedText(doc, text) {
     });
 }
 
-async function create_pdf() {
+
+async function create_pdf(texto) {
     const doc = new PDFDocument({
         size: 'A4',
-        margins: { top: 60, bottom: 50, left: 72, right: 72 },
+        margins: { top: 160, bottom: 120, left: 72, right: 72 },
         bufferPages: true,
     });
+
+    // Adiciona a imagem de capa ocupando toda a página
+    doc.image("uploads/logos/capa_dicas_cripto_analise.png", 0, 0, { width: doc.page.width, height: doc.page.height });
+
+    // Adiciona uma nova página para o conteúdo seguinte, com margens padrão
+    doc.addPage();
 
     // Define o espaçamento de linha globalmente
     doc.lineGap(2); // Ajuste o valor conforme necessário
 
-    const logoPath = 'uploads/logos/logo-dicascripto-laranja.png';
+    const header_png = 'uploads/logos/header_dicascripto_analise.png';
+    const footer_png = "uploads/logos/footer_pdf_analise.png"
 
     doc.on('pageAdded', () => {
         addPageBackground(doc); // Adiciona o fundo azul claro
-        addHeader(doc, logoPath);
-        addFooter(doc, logoPath);
-        doc.font('Helvetica').fontSize(12).fillColor('black');
+        addHeader(doc, header_png);
+        addFooter(doc, footer_png);
+        doc.font('uploads/fonts/Montserrat-Regular.ttf').fontSize(12).fillColor('black');
     });
 
     // Incializa tudo
     addPageBackground(doc); // Adiciona o fundo na primeira página antes do cabeçalho
-    addHeader(doc, logoPath);
-    addFooter(doc, logoPath);
-    doc.font('Helvetica').fontSize(12).fillColor('black');
+    addHeader(doc, header_png);
+    addFooter(doc, footer_png);
+    doc.font('uploads/fonts/Montserrat-Regular.ttf').fontSize(12).fillColor('black');
 
     // Processar e adicionar o texto formatado
-    addFormattedText(doc, mensagem_enorme);
+    addFormattedText(doc, texto);
+
+    // Adiciona uma nova página para as midias sociais, com margens padrão
+    doc.addPage();
+
+    // Adiciona o título centralizado
+    doc.font('uploads/fonts/Montserrat-Bold.ttf')
+        .fontSize(12)
+        .fillColor('black')
+        .text("Junte-se à Nossa Comunidade", { underline: false, align: 'center' });
+
+    // Move para baixo após o título para adicionar espaço
+    doc.moveDown(1); // Ajusta o valor conforme necessário para mais espaço
+
+    // Define o alinhamento para esquerda para o texto seguinte
+    doc.x = 72; // Restaura a posição x para a margem esquerda
+
+    // Agora adiciona o texto das mídias sociais, que será alinhado à esquerda
+    addFormattedText(doc, `Comunidade Dicas Cripto [FREE]: https://chat.whatsapp.com/KOMIxcf5hl4F0k6vclI0Kr
+Website: https://dicascripto.com
+Instagram: https://www.instagram.com/dicascripto
+TikTok: https://tiktok.com/@dicascripto
+YouTube: https://www.youtube.com/@dicascriptobr`);
 
     // Salva o arquivo PDF na pasta raiz do projeto e converte para base64
     const pdf_path = path.join(process.cwd(), 'output.pdf');
-    return await save_and_convert_to_base64(doc, pdf_path);
+    return await convertToBase64(doc, pdf_path);
+    // return await savePDF(doc, pdf_path);
 }
 
-create_pdf().then((base64_string) => {
-    // console.log(base64_string); // Aqui você tem seu PDF em base64
-}).catch((error) => {
-    console.error("Ocorreu um erro ao criar o PDF:", error);
-});
+// create_pdf(mensagem_enorme).then((base64_string) => {
+//     // console.log(base64_string); // Aqui você tem seu PDF em base64
+// }).catch((error) => {
+//     console.error("Ocorreu um erro ao criar o PDF:", error);
+// });
+
+module.exports = {
+    create_pdf
+};

@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const { enviar_mensagem_whatsapp } = require("../functions/apps_midias_sociais/whatsapp");
 const { get_criptos_coingecko_cache } = require("../caches/analise_carteira");
 const { calcular_rsi_cripto, rebalancear_investimentos } = require("../functions/analise_carteira");
+const { create_pdf } = require("../functions/gerar_pdfs");
 
 router.get("/pegar_critpos_coingecko", async (request, response) => {
     try {
@@ -71,6 +72,7 @@ router.post("/analisar_carteira", async (request, response) => {
         //     "response": [
         //         {
         //             "tipo_analise": "Análise Realizada de Curto Prazo",
+        //             "tipo_rebalanceamento": "Rebalanceamento Realizada de Curto Prazo",
         //             "analises": [
         //                 {
         //                     "sigla": "BTC",
@@ -97,6 +99,7 @@ router.post("/analisar_carteira", async (request, response) => {
         //         },
         //         {
         //             "tipo_analise": "Análise Realizada de Médio Prazo",
+        //             "tipo_rebalanceamento": "Rebalanceamento Realizada de Médio Prazo",
         //             "analises": [
         //                 {
         //                     "sigla": "BTC",
@@ -123,6 +126,7 @@ router.post("/analisar_carteira", async (request, response) => {
         //         },
         //         {
         //             "tipo_analise": "Análise Realizada de Longo Prazo",
+        //             "tipo_rebalanceamento": "Rebalanceamento Realizada de Longo Prazo",
         //             "analises": [
         //                 {
         //                     "sigla": "BTC",
@@ -159,24 +163,28 @@ router.post("/analisar_carteira", async (request, response) => {
 
         const ultima_analise = await models.analises_carteiras.findOne({
             order: [["created_at", "DESC"]],
-            where: { [Op.or]: [{ ip_client }, { celular }] }
+            where: { [Op.or]: [{ ip_client }, { celular }] },
+            raw: true
         });
 
-        var diferenca_em_horas = (new Date() - new Date(ultima_analise.created_at)) / (1000 * 60 * 60);
-        var diferenca_em_milissegundos = new Date() - new Date(ultima_analise.created_at);
+        if (ultima_analise) {
+            const dataUltimaAnaliseMaisQuatroHoras = new Date(new Date(ultima_analise.created_at).getTime() + 4 * 60 * 60 * 1000);
+            var diferenca_em_horas = (new Date() - dataUltimaAnaliseMaisQuatroHoras) / (1000 * 60 * 60);
 
-        if (diferenca_em_horas <= 0.1) {
-            const minutos_restantes = Math.floor((diferenca_em_milissegundos % (1000 * 60 * 60)) / (1000 * 60));
-            const horas_restantes = Math.floor(diferenca_em_horas);
+            if (diferenca_em_horas >= 0) {
+                var diferenca_em_milissegundos = Math.abs(new Date() - dataUltimaAnaliseMaisQuatroHoras);
+                const minutos_restantes = Math.floor((diferenca_em_milissegundos % (1000 * 60 * 60)) / (1000 * 60));
+                const horas_restantes = Math.abs(Math.ceil(diferenca_em_horas)); // Usando ceil para arredondar para cima e garantir ao menos 1 hora, e abs para converter qualquer valor negativo em positivo
 
-            const horas_str = horas_restantes === 1 ? "hora" : "horas";
-            const minutos_str = minutos_restantes === 1 ? "minuto" : "minutos";
+                const horas_str = horas_restantes === 1 ? "hora" : "horas";
+                const minutos_str = minutos_restantes === 1 ? "minuto" : "minutos";
 
-            const mensagem = `Limite de análises atingido. Seu limite será resetado em ${horas_restantes} ${horas_str} e ${minutos_restantes} ${minutos_str}.`;
+                const mensagem = `Limite de análises atingido. Seu limite será resetado em ${horas_restantes} ${horas_str} e ${minutos_restantes} ${minutos_str}.`;
 
-            const limite_analise_error = new Error(mensagem);
-            limite_analise_error.custom_error = true;
-            throw limite_analise_error;
+                const limite_analise_error = new Error(mensagem);
+                limite_analise_error.custom_error = true;
+                throw limite_analise_error;
+            };
         };
 
         // Adiciona carteira da analise no banco
@@ -231,6 +239,8 @@ router.post("/analisar_carteira", async (request, response) => {
         const rsi_criptos = analises_rsi.filter(data => !data.erro);
         const rsi_criptos_erros = analises_rsi.filter(data => data.erro);
 
+        // console.log(rsi_criptos_erros)
+
         // Faz o rebalanceamneto do investimento com base no RSI das critpos
         const analises_rsi_criptos = await rebalancear_investimentos(rebalancear_investimentos(rebalancear_investimentos(rsi_criptos, 'rsi_curto_prazo'), 'rsi_medio_prazo'), 'rsi_longo_prazo');
 
@@ -255,12 +265,14 @@ router.post("/analisar_carteira", async (request, response) => {
             };
         });
 
+        // Cria as mensagens que serão mostradas no whats e enviadas via PDF
         var analise_mensagem_whatsapp = "";
         var rebalanceamentos_mensagem_whatsapp = "🚀 [b]Atualização do Portfólio Cripto[/b]\n\n";
         const analise_curto_prazo = [];
         const analise_medio_prazo = [];
         const analise_longo_prazo = [];
 
+        // Monta o objeto de análises das criptos e períodos
         analises_rsi_criptos.forEach(analise => {
 
             analise_curto_prazo.push({
@@ -288,6 +300,7 @@ router.post("/analisar_carteira", async (request, response) => {
             });
         });
 
+        // Monta o objeto final que será enviado ao frontend
         const response_analises = [
             { tipo_analise: "Análise Realizada de Curto Prazo", tipo_rebalanceamento: "Rebalanceamento de Curto Prazo", analises: analise_curto_prazo },
             { tipo_analise: "Análise Realizada de Médio Prazo", tipo_rebalanceamento: "Rebalanceamento de Médio Prazo", analises: analise_medio_prazo },
@@ -296,7 +309,7 @@ router.post("/analisar_carteira", async (request, response) => {
 
         response_analises.forEach(analise => {
 
-            analise_mensagem_whatsapp += `[b]${analise.tipo_analise}[/b]\n`;
+            analise_mensagem_whatsapp += `**${analise.tipo_analise}**\n`;
             rebalanceamentos_mensagem_whatsapp += `📊 [b]${analise.tipo_rebalanceamento}[/b]\n`;
 
             analise.analises.forEach(a => {
@@ -309,7 +322,8 @@ router.post("/analisar_carteira", async (request, response) => {
 
         });
 
-        analise_mensagem_whatsapp += "[b]Estas sugestões de ajustes não constitui uma recomendação direta de investimento.[/b]"
+        analise_mensagem_whatsapp += `**Estas sugestões de ajustes não constitui uma recomendação direta de investimento.**`;
+
         rebalanceamentos_mensagem_whatsapp += "[b]Estas sugestões de ajustes não constitui uma recomendação direta de investimento.[/b]"
 
         var rodape = `🔍 [b]Análise de Mercado DicasCripto[/b] 🔍
@@ -333,7 +347,10 @@ Para mais informações e atualizações, acesse nossa comunidade, siga-nos nas 
 
         (async () => {
             await enviar_mensagem_whatsapp(celular.replace(/[^0-9]/g, ''), rebalanceamentos_mensagem_whatsapp);
-            await enviar_mensagem_whatsapp(celular.replace(/[^0-9]/g, ''), analise_mensagem_whatsapp);
+
+            var analise_pdf_base64 = await create_pdf(analise_mensagem_whatsapp);
+            await enviar_mensagem_whatsapp(celular.replace(/[^0-9]/g, ''), "", null, "Documento", null, null, null, analise_pdf_base64, "analise", "Análise automatizada gerada por DicasCripto.");
+
             await enviar_mensagem_whatsapp(
                 celular.replace(/[^0-9]/g, ''),
                 rodape,
@@ -353,7 +370,7 @@ Para mais informações e atualizações, acesse nossa comunidade, siga-nos nas 
     } catch (error) {
         console.error("\x1b[91m%s\x1b[0m", error);
 
-        if (error.customError) {
+        if (error.custom_error) {
             response.status(400).json({
                 "mensagem": error.message,
                 "erro": error.message

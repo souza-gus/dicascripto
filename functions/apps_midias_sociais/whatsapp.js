@@ -7,7 +7,7 @@ function formatarTextoParaWhatsApp(texto) {
     return texto.replace(/\[b\]\s*/g, '*').replace(/\s*\[\/b\]/g, '*');
 };
 
-const enviar_mensagem_whatsapp = (destinatario, mensagem, imagem_path, tipo_mensagem = "Comum", linkUrl, title, linkDescription) => new Promise((resolve, reject) => {
+const enviar_mensagem_whatsapp = (destinatario, mensagem, imagem_path, tipo_mensagem = "Comum", linkUrl, title, linkDescription, documento_base64, fileName, caption) => new Promise((resolve, reject) => {
 
     mensagem = formatarTextoParaWhatsApp(mensagem);
     var body = JSON.stringify({ message: mensagem, phone: destinatario });
@@ -46,6 +46,18 @@ const enviar_mensagem_whatsapp = (destinatario, mensagem, imagem_path, tipo_mens
             linkUrl,
             title,
             linkDescription
+        });
+    };
+
+    // Envio de documento
+    if (tipo_mensagem === "Documento") {
+        url += "send-document/pdf";
+        
+        body = JSON.stringify({ 
+            phone: destinatario,
+            document: `data:application/pdf;base64,${documento_base64}`, 
+            fileName,
+            caption
         });
     };
 

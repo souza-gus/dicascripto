@@ -1,6 +1,6 @@
 const { models, auto } = require("../banco/sinc_db");
 const { Op } = require('sequelize');
-const { ws_sinais_cache } = require("./sinais_cache");
+const { ws_sinais_cache } = require("../caches/sinais_cache");
 const { WebsocketStream } = require("@binance/connector");
 
 // Mepeia  de acordo com o status do sinal
@@ -114,12 +114,19 @@ const inicializa_monitoramento_sinais = async () => {
                 ativo: true
             },
             include: [
-                { model: models.criptomoedas, as: "id_cripto1_sinal_criptomoeda", attributes: ["sigla"] },
-                { model: models.criptomoedas, as: "id_cripto2_sinal_criptomoeda", attributes: ["sigla"] },
-                { model: models.exchanges, as: "id_exchange_sinal_exchange", attributes: ["nome"] }
+                { model: models.criptomoedas, as: "cripto1", attributes: ["sigla"] },
+                { model: models.criptomoedas, as: "cripto2", attributes: ["sigla"] },
+                { model: models.exchanges, as: "exchange", attributes: ["nome"] },
+                { model: models.sinais_sides, as: "side", attributes: ["codigo"] },
+                { model: models.sinais_status, as: "status", attributes: ["codigo"] },
+                { model: models.midias_sociais_mensagens, as: "mensagem", attributes: ["id"] },
             ],
+            attributes: ["id", "entrada_inicial", "entrada_final", "alvo1", "alvo2", "alvo3", "stop"],
             raw: true
         });
+
+        console.log(sinais);
+        return;
 
         if (sinais.length === 0) {
             return;
@@ -128,9 +135,9 @@ const inicializa_monitoramento_sinais = async () => {
         // Percorre cada sinal para montar o cache dos sinais e abrir as conexõe com o WS
         sinais.forEach(sinal => {
 
-            const exchange = sinal["id_exchange_sinal_exchange.nome"].toLowerCase();
-            const cripto1 = sinal["id_cripto1_sinal_criptomoeda.sigla"].toLowerCase();
-            const cripto2 = sinal["id_cripto2_sinal_criptomoeda.sigla"].toLowerCase();
+            const exchange = sinal["exchange.nome"].toLowerCase();
+            const cripto1 = sinal["cripto1.sigla"].toLowerCase();
+            const cripto2 = sinal["cripto2.sigla"].toLowerCase();
 
             // Monta a key que sera inserida no cache
             const key = `${exchange}_${cripto1}${cripto2}`;

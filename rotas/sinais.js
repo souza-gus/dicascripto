@@ -2,85 +2,92 @@ const express = require('express');
 const router = express.Router();
 const { models } = require("../banco/sinc_db");
 const { WebsocketStream } = require("@binance/connector");
-const { midias_sociais_triggers } = require('../functions/mensageiro');
+const { enviar_mensagem } = require('../functions/mensageiro');
 const multer = require("multer");
 
-const { analisar_sinal, conectar_websocket } = require('../functions/sinais');
+const { conectar_websocket } = require('../functions/sinais');
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, "uploads/sinais");
-    },
-    filename: (req, file, cb) => {
-        const fileName = `${Date.now()}-${file.originalname}`;
-        cb(null, fileName);
-    },
-});
+const memoryStorage = multer.memoryStorage();
+const upload = multer({ storage: memoryStorage });
 
-const upload = multer({ storage });
-
-router.post("/criar_sinal", upload.array('arquivos'), async (request, response) => {
+router.post("/criar_sinal", upload.fields([
+    { name: "arquivos", maxCount: 5 },
+    { name: "arquivo", maxCount: 1 }
+]), async (request, response) => {
     try {
         /**
-        * Endpoint para criar um sinal no banco de dados e enviar o sinal para as midias sociais desejadas
+        * Endpoint para enviar mensagens nas midias sociais e criar no banco a mensagem
         * @param {
-        *   "created_by": "id" do usuario que criou a requisição,
+        *   "created_by": "1"
+        *   "mensagem_categorias": [ ...objetos da Tabela "categorias_mensagens" ]
+        *   "midias_sociais": [ { "codigo": "wpp", "destinatario": "5518998085885"} ],
         *   "sinal": { ...objeto da Tabela "sinais" },
-        *   "midias_sociais_grupos": [ ...objetos da Tabela "midias_sociais_grupos" ]
+        *   "cripto": {
+        *       "sigla": "BTC",
+        *       "id_coingecko": "bitcoin",
+        *       "logo_url": ""
+        *   }
         * } request.body
         */
 
-        // Convertendo o formato da requisição para um valor acessível
-        const req_sinal = JSON.parse(request.body.sinal);
-        const req_midias_sociais_grupos = JSON.parse(request.body.midias_sociais_grupos ?? null);
-        const req_files = request.files;
-        const req_created_by = request.body.created_by ?? undefined;
+        // Pega o body em string ou json
+        const req_cripto = typeof request.body.cripto === "string" ? JSON.parse(request.body.cripto) : request.body.cripto;
+        const req_sinal = typeof request.body.sinal === "string" ? JSON.parse(request.body.sinal) : request.body.sinal;
 
-        // Cria o sinal no banco
-        const sinal = await models.sinais.create({ ...req_sinal, created_by: req_created_by, }).then(sinal => sinal.toJSON());
+        const cripto_existe = await models.criptomoedas.findOne({ where: { sigla: req_cripto.sigla, id_coingecko: req_cripto.id_coingecko } });
 
-        if (!!req_files) {
-            // Salvar os arquivos do sinal no banco de dados
-            req_files.forEach(async (arquivo) => {
-                await models.sinais_arquivos.create({
-                    created_by: req_created_by,
-                    id_sinal: sinal.id,
-                    arquivo: arquivo.filename
-                });
-            });
+        // Se a cripto não existe no banco nós adicionamos
+        if (!cripto_existe) {
+            var cripto_nova = await models.criptomoedas.create({ ...req_cripto });
         };
 
-        // Insere no banco dados na tabela "sinais_evolucoes"
-        await models.sinais_evolucoes.create({
-            id_sinal: sinal.id, id_status_sinal: 1,
-            mensagem: "certo",
-            created_by: req_created_by
+        var id_cripto_usada = cripto_existe?.id ?? cripto_nova.id;
+        const tether = await models.criptomoedas.findOne({ where: { sigla: "USDT" } });
+
+        const side = await models.sinais_sides.findOne({ where: { id: req_sinal.id_side_sinal } }).then(side => side.codigo);
+
+        var pnl_estimado = side === "long" ? (req_sinal.alvo3 - req_sinal.entrada_inicial) : (req_sinal.entrada_inicial - req_sinal.alvo3);
+        pnl_estimado = pnl_estimado * 100 / req_sinal.entrada_inicial;
+
+        var loss_estimado = side === "long" ? (req_sinal.stop - req_sinal.entrada_inicial) : (req_sinal.entrada_inicial - req_sinal.stop);
+        loss_estimado = loss_estimado * 100 / req_sinal.entrada_inicial;
+
+        const percentual_capital = (req_sinal.risco_assumido / (loss_estimado * -1)) * 100;
+        const margem = percentual_capital / req_sinal.alavancagem;
+
+        const sinal = await models.sinais.create({
+            ...req_sinal,
+            id_cripto1_sinal: id_cripto_usada,
+            id_cripto2_sinal: tether.id,
+            preco_momento: req_cripto.preco_momento,
+            pnl_estimado: pnl_estimado * req_sinal.alavancagem,
+            loss_estimado: loss_estimado * req_sinal.alavancagem,
+            percentual_capital,
+            margem
         });
 
-        const midias_sociais_grupos = req_midias_sociais_grupos ?? [];
+        const mensagem = `[b]NOVO SINAL DICAS CRIPTO[/b]
 
-        if (midias_sociais_grupos.length > 0) {
+• 👉 [b]ID:[/b] #${sinal.id}
+• 👉 [b]Par:[/b] ${req_cripto.sigla}/USDT
+• 🐮 [b]Estratégia:[/b] ${side.toUpperCase()}
+• 👉 [b]Mercado:[/b] FUTURES
+• 👉 [b]Alavancagem:[/b] ${sinal.alavancagem}X
+• 👉 [b]Investimento:[/b] ${percentual_capital}% (Margem ${margem}%)
+• 👉 [b]Tipo operação:[/b] DAYTRADE
+• 💰 [b]Entrada:[/b] ${sinal.entrada_inicial} à ${sinal.entrada_final}
+• 🚫 [b]Stop:[/b] ${sinal.stop}
+• 🎯 [b]Saídas[/b]
+• ⎿  [b]Alvo 1:[/b] ${sinal.alvo1}
+• ⎿  [b]Alvo 2:[/b] ${sinal.alvo2}
+• ⎿  [b]Alvo 3:[/b] ${sinal.alvo3}`;
 
-            // Cria o objeto da tabela "sinais_midias_sociais_grupos" para fazer uma inserção em bulk
-            const sinais_midias_sociais_grupos = midias_sociais_grupos.map(grupo => {
-                return {
-                    "id_sinal": sinal.id,
-                    "id_midia_social_grupo": grupo.id,
-                    "created_by": req_created_by,
-                }
-            });
+        const id_mesangem = await enviar_mensagem(request, mensagem);
 
-            // Insere no banco dados na tabela "sinais_midias_sociais_grupos"
-            await models.sinais_midias_sociais_grupos.bulkCreate(sinais_midias_sociais_grupos);
-
-            // Envia a mensagem para todas as midias sociais desejadas
-            await midias_sociais_grupos.forEach(grupo => midias_sociais_triggers[grupo.midia_social.codigo](grupo.destinatario, "teste"));
-        };
-
-        response.status(200).json({ "mensagem": "OK", "id_sinal": sinal.id });
+        response.status(200).json({ "mensagem": "OK", "erro": null, id_mesangem });
     } catch (error) {
 
-        response.status(500).json({ "erro": error.message });
+        response.status(500).json({ "mensagem": "Houve complicações com o algoritmo de sinais. Resolva o erro e tente novamente", "erro": error.message });
     };
 });
 
@@ -158,28 +165,6 @@ router.post("/monitorar_sinal/:id_sinal", async (request, response) => {
         };
 
         // const sinal_cache = ws_sinais_cache.filter(cache => );
-
-        response.status(200).json({ "mensagem": "OK" });
-    } catch (error) {
-
-        response.status(500).json({ "erro": error.message });
-    };
-});
-
-router.post("/teste", async (request, response) => {
-    try {
-        /**
-        * Endpoint para enviar mensagens nas midias sociais de uma mensagem que já esta no banco de dados
-        * @param { id_sinal } request.params
-        */
-
-        conectar_websocket.binance(ws_sinais_cache);
-
-        setTimeout(() => {
-            ws_sinais_cache.teste = {
-                sinais: [1, 2, 3]
-            };
-        }, 6000);
 
         response.status(200).json({ "mensagem": "OK" });
     } catch (error) {

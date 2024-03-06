@@ -67,12 +67,16 @@ function calculateRSI(close_prices, length) {
 
 const calcular_rsi_cripto = async (sigla = 'btc', interval = '1d', limit = 100) => {
     try {
-        const response = await client_spot_binance.klines(`${sigla}USDT`.toUpperCase(), interval, { limit });
+        const response = await client_spot_binance.klines(`${sigla}USDT`.toUpperCase(), interval, { limit }).catch(error => {
+            // se falhar a busca na binance tenta usar outra exchange para pegar a informação dos candles
+            throw error;
+        });
         const closingPrices = await response.data.map(kline => parseFloat(kline[4]));
         const rsi = calculateRSI(closingPrices, 14);
 
         return rsi;
     } catch (error) {
+        // console.log(error.message);
         throw error.message;
     };
 };
@@ -81,11 +85,11 @@ function gerar_mensagem_rsi(rsi, sigla) {
     const faixas_rsi = [
         {
             limiteInferior: 80, mensagens: [
-                "Extrema CAUTELA! A análise de nossa inteligência artificial, apresenta a criptomoeda ${sigla} com um patamar de extrema valorização. Baseando-se em diversos dados e informações, dentre elas: Indicadores, menções em redes sociais, análise de sentimento e várias outras, nossa inteligência artificial enxerga uma possibilidade de captura de lucros e reavaliação estratégica das posições atuais para esta cripto. Esse movimento poderia trazer novas oportunidades para o portfólio, buscando oportunidades com maior margem de crescimento. Nossa I.A irá te apresentar uma possibilidade de rebalanceamento ao final desta análise.",
-                "ALERTA MÁXIMO! A avaliação feita pela nossa I.A destaca a criptomoeda ${sigla} num nível de valorização surpreendente. A partir de uma ampla gama de dados, incluindo análises de mercado, menções sociais e sentimentos, identificamos um forte potencial para a realização de lucros e ajustes estratégicos nas alocações atuais. Esta pode ser uma chance de diversificar o portfólio com ativos de alto crescimento. Fique atento às recomendações de rebalanceamento ao concluir esta análise.",
-                "CUIDADO EXTREMO! Nossa inteligência artificial aponta a criptomoeda ${sigla} como altamente valorizada, após um exame detalhado de variáveis como indicadores de mercado, popularidade em redes e análises emocionais. Vemos uma grande oportunidade para otimizar ganhos e reconsiderar estratégias de investimento. Esta análise sugere a possibilidade de redefinir o portfólio para maximizar o potencial de crescimento. Aguarde as sugestões de nossa I.A para ajustes no final deste relatório.",
-                "VIGILÂNCIA ELEVADA! Segundo nossa análise de inteligência artificial, a criptomoeda ${sigla} está num patamar de alta significativa. Com base em um leque de informações, incluindo indicadores técnicos e menções online, percebemos uma oportunidade ímpar de capitalizar lucros e reavaliar as posições correntes. Este cenário abre portas para enriquecer o portfólio com opções de maior potencial de valorização. As propostas de realocação da nossa I.A serão apresentadas ao término desta análise.",
-                "EXTREMA VIGILÂNCIA REQUERIDA! A análise preditiva de nossa inteligência artificial coloca a criptomoeda ${sigla} em uma fase de valorização notável. Utilizando uma diversidade de dados, incluindo análise de sentimentos e atividade nas redes sociais, identificamos uma janela estratégica para lucros e reajuste das atuais posições de investimento. Este ajuste propõe explorar novas oportunidades de alto retorno. Detalhes sobre o rebalanceamento sugerido por nossa I.A serão compartilhados após esta análise."
+                `Extrema CAUTELA! A análise de nossa inteligência artificial, apresenta a criptomoeda ${sigla} com um patamar de extrema valorização. Baseando-se em diversos dados e informações, dentre elas: Indicadores, menções em redes sociais, análise de sentimento e várias outras, nossa inteligência artificial enxerga uma possibilidade de captura de lucros e reavaliação estratégica das posições atuais para esta cripto. Esse movimento poderia trazer novas oportunidades para o portfólio, buscando oportunidades com maior margem de crescimento. Nossa I.A irá te apresentar uma possibilidade de rebalanceamento ao final desta análise.`,
+                `ALERTA MÁXIMO! A avaliação feita pela nossa I.A destaca a criptomoeda ${sigla} num nível de valorização surpreendente. A partir de uma ampla gama de dados, incluindo análises de mercado, menções sociais e sentimentos, identificamos um forte potencial para a realização de lucros e ajustes estratégicos nas alocações atuais. Esta pode ser uma chance de diversificar o portfólio com ativos de alto crescimento. Fique atento às recomendações de rebalanceamento ao concluir esta análise.`,
+                `CUIDADO EXTREMO! Nossa inteligência artificial aponta a criptomoeda ${sigla} como altamente valorizada, após um exame detalhado de variáveis como indicadores de mercado, popularidade em redes e análises emocionais. Vemos uma grande oportunidade para otimizar ganhos e reconsiderar estratégias de investimento. Esta análise sugere a possibilidade de redefinir o portfólio para maximizar o potencial de crescimento. Aguarde as sugestões de nossa I.A para ajustes no final deste relatório.`,
+                `VIGILÂNCIA ELEVADA! Segundo nossa análise de inteligência artificial, a criptomoeda ${sigla} está num patamar de alta significativa. Com base em um leque de informações, incluindo indicadores técnicos e menções online, percebemos uma oportunidade ímpar de capitalizar lucros e reavaliar as posições correntes. Este cenário abre portas para enriquecer o portfólio com opções de maior potencial de valorização. As propostas de realocação da nossa I.A serão apresentadas ao término desta análise.`,
+                `EXTREMA VIGILÂNCIA REQUERIDA! A análise preditiva de nossa inteligência artificial coloca a criptomoeda ${sigla} em uma fase de valorização notável. Utilizando uma diversidade de dados, incluindo análise de sentimentos e atividade nas redes sociais, identificamos uma janela estratégica para lucros e reajuste das atuais posições de investimento. Este ajuste propõe explorar novas oportunidades de alto retorno. Detalhes sobre o rebalanceamento sugerido por nossa I.A serão compartilhados após esta análise.`
             ]
         },
         {
