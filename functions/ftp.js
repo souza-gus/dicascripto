@@ -27,6 +27,18 @@ const ftp_upload_arquivo = async (buffer_arquivo, caminho_arquivo) => {
 
 };
 
+const ftp_url_arquivo = async (arquivo) => {
+    const nome_arquivo = `${new Date().getTime()}-${arquivo.originalname.replace(/\s+/g, '-')}`;
+    const url_ftp = process.env.FTP_URL;
+    const url_ftp_mensagens = process.env.FTP_UPLOADS_MENSAGENS;
+    const url_completa = `${url_ftp}/${url_ftp_mensagens}/${nome_arquivo}`;
+
+    await ftp_upload_arquivo(arquivo.buffer, `${url_ftp_mensagens}/${nome_arquivo}`);
+
+    return url_completa;
+};
+
 module.exports = {
-    ftp_upload_arquivo
+    ftp_upload_arquivo,
+    ftp_url_arquivo
 };

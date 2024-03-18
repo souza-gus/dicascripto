@@ -1,11 +1,13 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 const { models } = require("../banco/sinc_db");
-const { WebsocketStream } = require("@binance/connector");
-const { enviar_mensagem } = require('../functions/mensageiro');
+const { enviar_mensagem, enviar_mensagem_simples } = require("../functions/mensageiro");
 const multer = require("multer");
+const { monitorar_sinais } = require("../functions/sinais/monitoramento_sinais");
+const validar_parametros_middleware = require("../middlewares/verifica_parametros");
+const { verificar_parametros } = require("../functions/globais");
+const puppeteer = require("puppeteer");
 
-const { conectar_websocket } = require('../functions/sinais');
 
 const memoryStorage = multer.memoryStorage();
 const upload = multer({ storage: memoryStorage });
@@ -20,7 +22,7 @@ router.post("/criar_sinal", upload.fields([
         * @param {
         *   "created_by": "1"
         *   "mensagem_categorias": [ ...objetos da Tabela "categorias_mensagens" ]
-        *   "midias_sociais": [ { "codigo": "wpp", "destinatario": "5518998085885"} ],
+        *   "destinatarios": [ {"id_grupo": 1, "destinatario": "321312", "midia_social_codigo" } ],
         *   "sinal": { ...objeto da Tabela "sinais" },
         *   "cripto": {
         *       "sigla": "BTC",
@@ -32,7 +34,53 @@ router.post("/criar_sinal", upload.fields([
 
         // Pega o body em string ou json
         const req_cripto = typeof request.body.cripto === "string" ? JSON.parse(request.body.cripto) : request.body.cripto;
+        req_cripto.sigla = req_cripto.sigla.replace(/[^a-zA-Z0-9]/g, '');
+
         const req_sinal = typeof request.body.sinal === "string" ? JSON.parse(request.body.sinal) : request.body.sinal;
+
+        if (!req_cripto.sigla) {
+            throw new Error("Atenção: Selecione um par de criptomoedas.");
+        };
+
+        // Pega o código do side
+        const side = await models.sinais_sides.findOne({ where: { id: req_sinal.id_side_sinal } }).then(side => side.codigo);
+
+        // Validar parâmetros obrigatorios
+        const params_sinal = verificar_parametros(req_sinal, [
+            "id_side_sinal",
+            "id_tipo_trade_sinal",
+            "id_mercado_sinal",
+            "id_exchange_sinal",
+            "ativo",
+            "entrada_inicial",
+            "entrada_final",
+            "alvo1",
+            "alvo2",
+            "alvo3",
+            "stop",
+            "alavancagem",
+            "risco_assumido",
+            "preco_momento"
+        ]);
+
+        if (!params_sinal.valido) throw new Error(params_sinal.mensagem);
+
+        const params_cripto = verificar_parametros(req_cripto, [
+            "nome",
+            "sigla",
+            "id_coingecko",
+        ]);
+
+        if (!params_cripto.valido) throw new Error(params_cripto.mensagem);
+
+        // Valida as entradas de acordo com o side
+        if (side === "long" && req_sinal.entrada_final < req_sinal.entrada_inicial) {
+            throw new Error("Atenção: Operação de LONG, o preço da entrada final precisa ser maior que o preço da entrada inicial");
+        };
+
+        if ((side === "short" && req_sinal.entrada_final > req_sinal.entrada_inicial)) {
+            throw new Error("Atenção: Operação de SHORT, o preço da entrada inicial precisa ser maior que o preço da entrada final");
+        };
 
         const cripto_existe = await models.criptomoedas.findOne({ where: { sigla: req_cripto.sigla, id_coingecko: req_cripto.id_coingecko } });
 
@@ -43,8 +91,6 @@ router.post("/criar_sinal", upload.fields([
 
         var id_cripto_usada = cripto_existe?.id ?? cripto_nova.id;
         const tether = await models.criptomoedas.findOne({ where: { sigla: "USDT" } });
-
-        const side = await models.sinais_sides.findOne({ where: { id: req_sinal.id_side_sinal } }).then(side => side.codigo);
 
         var pnl_estimado = side === "long" ? (req_sinal.alvo3 - req_sinal.entrada_inicial) : (req_sinal.entrada_inicial - req_sinal.alvo3);
         pnl_estimado = pnl_estimado * 100 / req_sinal.entrada_inicial;
@@ -57,23 +103,23 @@ router.post("/criar_sinal", upload.fields([
 
         const sinal = await models.sinais.create({
             ...req_sinal,
+            id_status_sinal: 1,
             id_cripto1_sinal: id_cripto_usada,
             id_cripto2_sinal: tether.id,
-            preco_momento: req_cripto.preco_momento,
-            pnl_estimado: pnl_estimado * req_sinal.alavancagem,
-            loss_estimado: loss_estimado * req_sinal.alavancagem,
-            percentual_capital,
-            margem
+            pnl_estimado: Number(pnl_estimado * req_sinal.alavancagem).toFixed(2),
+            loss_estimado: Number(loss_estimado * req_sinal.alavancagem).toFixed(2),
+            percentual_capital: Number(percentual_capital).toFixed(2),
+            margem: Number(margem).toFixed(2)
         });
 
         const mensagem = `[b]NOVO SINAL DICAS CRIPTO[/b]
 
 • 👉 [b]ID:[/b] #${sinal.id}
 • 👉 [b]Par:[/b] ${req_cripto.sigla}/USDT
-• 🐮 [b]Estratégia:[/b] ${side.toUpperCase()}
+• ${side === "long" ? "🐮" : "🐻"} [b]Estratégia:[/b] ${side.toUpperCase()}
 • 👉 [b]Mercado:[/b] FUTURES
 • 👉 [b]Alavancagem:[/b] ${sinal.alavancagem}X
-• 👉 [b]Investimento:[/b] ${percentual_capital}% (Margem ${margem}%)
+• 👉 [b]Investimento:[/b] ${sinal.percentual_capital}% (Margem ${sinal.margem}%)
 • 👉 [b]Tipo operação:[/b] DAYTRADE
 • 💰 [b]Entrada:[/b] ${sinal.entrada_inicial} à ${sinal.entrada_final}
 • 🚫 [b]Stop:[/b] ${sinal.stop}
@@ -82,12 +128,56 @@ router.post("/criar_sinal", upload.fields([
 • ⎿  [b]Alvo 2:[/b] ${sinal.alvo2}
 • ⎿  [b]Alvo 3:[/b] ${sinal.alvo3}`;
 
-        const id_mesangem = await enviar_mensagem(request, mensagem);
+        // Montando requisição para enviar mensagem nas midias sociais
+        const req_created_by = request.body.created_by ?? undefined;
 
-        response.status(200).json({ "mensagem": "OK", "erro": null, id_mesangem });
+        var req_mensagem_categorias = request.body.mensagem_categorias;
+        req_mensagem_categorias = typeof req_mensagem_categorias === "string" ? JSON.parse(req_mensagem_categorias) : req_mensagem_categorias;
+
+        var req_destinatarios = request.body.destinatarios;
+        req_destinatarios = typeof req_destinatarios === "string" ? JSON.parse(req_destinatarios) : req_destinatarios;
+
+        const req_files_arquivos = request.files?.arquivos ?? null; // Se um dia for usar js para consumir a API       
+        const req_files_arquivo = request.files?.arquivo?.[0] ?? null; // O bubble aceita enviar apenas um arquivo por vez
+
+        // Faz todo o processo de criação de mensagem e envio de mensagem
+        const id_mensagem = await enviar_mensagem(req_created_by, mensagem, req_mensagem_categorias, req_destinatarios, req_files_arquivos, req_files_arquivo);
+
+        // Envia uma mensagem informativa depois de enviar o sinal.
+        setTimeout(() => {
+            enviar_mensagem_simples(req_destinatarios, `🤔 NÃO SABE COMO COPIAR NOSSOS SINAIS PRA COMEÇAR A LUCRAR?
+
+🔥 [b]ACESSE AGORA NOSSO MATERIAL EXCLUSIVO[/b] 🔥
+👉 https://secure.doppus.com/sale/SZZJOZ8EZZJOZ8EJHHOZO`);
+        }, 4000);
+
+        // Cria a primeira evolução da Critpo
+        await models.sinais_evolucoes.create({ id_sinal: sinal.id, id_status_sinal: 1, id_mensagem });
+
+        // Atualiza o sinal com o id da mensagem original
+        await models.sinais.update({ id_mensagem_sinal: id_mensagem }, { where: { id: sinal.id } });
+
+        // Busca o sinal no banco com o formato que precisa ter para ser monitorado
+        const sinal_monitorado = await models.sinais.findOne({
+            where: { id: sinal.id },
+            include: [
+                { model: models.criptomoedas, as: "cripto1", attributes: ["sigla"] },
+                { model: models.criptomoedas, as: "cripto2", attributes: ["sigla"] },
+                { model: models.exchanges, as: "exchange", attributes: ["nome"] },
+                { model: models.sinais_sides, as: "side", attributes: ["codigo"] },
+                { model: models.sinais_status, as: "status", attributes: ["codigo"] },
+                { model: models.midias_sociais_mensagens, as: "mensagem", attributes: ["id"] },
+            ],
+            attributes: ["id", "entrada_inicial", "entrada_final", "alvo1", "alvo2", "alvo3", "stop", "id_status_sinal", "created_at", "alavancagem", "id_mensagem_sinal"],
+            raw: true
+        });
+
+        monitorar_sinais([sinal_monitorado]);
+
+        response.status(200).json({ "mensagem": "Sinal criado com sucesso!", "erro": null, id_mensagem });
     } catch (error) {
-
-        response.status(500).json({ "mensagem": "Houve complicações com o algoritmo de sinais. Resolva o erro e tente novamente", "erro": error.message });
+        console.error("\x1b[91m%s\x1b[0m", error);
+        response.status(500).json({ "mensagem": error.message, "erro": error.message });
     };
 });
 
@@ -98,75 +188,36 @@ router.post("/monitorar_sinal/:id_sinal", async (request, response) => {
         * @param { id_sinal } request.params
         */
 
-        const sinal = await models.sinais.findOne({
-            where: {
-                id: request.params.id_sinal
-            },
-            include: [
-                { model: models.criptomoedas, as: "id_cripto1_sinal_criptomoeda" },
-                { model: models.criptomoedas, as: "id_cripto2_sinal_criptomoeda" },
-                { model: models.exchanges, as: "id_exchange_sinal_exchange" }
-            ]
-        }).then(sinal => sinal.toJSON());
-
-        const par = `${sinal.id_cripto1_sinal_criptomoeda.sigla}${sinal.id_cripto2_sinal_criptomoeda.sigla}`.toLowerCase();
-        const exchange = sinal.id_exchange_sinal_exchange.nome.toLowerCase();
-
-        const cache = ws_sinais_cache.filter(cache => cache.exchange === exchange && cache.par === par)[0];
-
-        const objeto_sinal = {
-            id: sinal.id,
-            id_side_sinal: sinal.id_side_sinal,
-            id_tipo_trade_sinal: sinal.id_tipo_trade_sinal,
-            id_mercado_sinal: sinal.id_mercado_sinal,
-            id_status_sinal: sinal.id_status_sinal,
-            ativo: sinal.ativo,
-            entrada_inicial: sinal.entrada_inicial,
-            entrada_final: sinal.entrada_final,
-            alvo1: sinal.alvo1,
-            alvo2: sinal.alvo2,
-            alvo3: sinal.alvo3,
-            stop: sinal.stop,
-            pnl_estimado: sinal.pnl_estimado,
-            loss_estimado: sinal.loss_estimado,
-            percentual_capital: sinal.percentual_capital,
-            alavancagem: sinal.alavancagem,
-            preco_momento: sinal.preco_momento,
-            pnl_resultado: sinal.pnl_resultado
-        };
-
-        if (!!cache) {
-            cache.sinais.push(objeto_sinal);
-        } else {
-
-            const ws_sinais = {
-                par,
-                exchange,
-                sinais: [
-                    objeto_sinal
-                ]
-            };
-
-            ws_sinais_cache.push(ws_sinais);
-
-            const websocket_binance = new WebsocketStream({
-                callbacks: {
-                    open: () => console.log("Conectado ao servidor Websocket da Binance"),
-                    close: () => console.log("Desconectado do servidor Websocket da Binance"),
-                    message: (wsdata) => {
-                        const data = JSON.parse(wsdata);
-
-                    },
-                },
-                wsURL: "wss://fstream.binance.com"
-            });
-
-            websocket_binance.ticker("tiausdt");
-        };
-
-        // const sinal_cache = ws_sinais_cache.filter(cache => );
-
         response.status(200).json({ "mensagem": "OK" });
+    } catch (error) {
+
+        response.status(500).json({ "erro": error.message });
+    };
+});
+
+router.get("/teste", async (request, response) => {
+    try {
+        // Iniciar o navegador
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+
+        // Definir o conteúdo HTML. Aqui você pode inserir o valor dinamicamente.
+        const valorPNL = req.query.valor; // Assume que o valor é passado como query parameter
+        const conteudoHTML = `<html><body><h1>PNL: ${valorPNL}</h1></body></html>`;
+
+        await page.setContent(conteudoHTML);
+
+        // Gerar a imagem a partir do HTML
+        const imagem = await page.screenshot({ format: 'png' });
+
+        // Fechar o navegador
+        await browser.close();
+
+        // Enviar a imagem como resposta
+        response.setHeader('Content-Type', 'image/png');
+        response.send(imagem);
+
+        // response.status(200).json({ "mensagem": "OK" });
     } catch (error) {
 
         response.status(500).json({ "erro": error.message });

@@ -7,6 +7,8 @@ const sobescrever = (models) => {
 
     models.midias_sociais_grupos.belongsTo(models.midias_sociais, { as: "midia_social", foreignKey: "id_midia_social" });
 
+    models.midias_sociais.hasMany(models.midias_sociais_grupos, { as: "grupos", foreignKey: "id_midia_social"});
+
     models.sinais.belongsTo(models.criptomoedas, { as: "cripto1", foreignKey: "id_cripto1_sinal" });
     models.sinais.belongsTo(models.criptomoedas, { as: "cripto2", foreignKey: "id_cripto2_sinal" });
     models.sinais.belongsTo(models.exchanges, { as: "exchange", foreignKey: "id_exchange_sinal" });

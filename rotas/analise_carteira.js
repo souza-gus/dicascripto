@@ -14,6 +14,7 @@ router.get("/pegar_critpos_coingecko", async (request, response) => {
         */
 
         const criptos = await get_criptos_coingecko_cache();
+        // const criptos = null
 
         response.status(200).json({
             "mensagem": "OK",
@@ -21,7 +22,7 @@ router.get("/pegar_critpos_coingecko", async (request, response) => {
         });
 
     } catch (error) {
-
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -40,6 +41,7 @@ router.post("/enviar_codigo_confirmacao", async (request, response) => {
         });
 
     } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({
             "mensagem": "Não foi possível enviar o código de verificação. Aguarde alguns instantes e tente novamente.",
             "erro": error.message
@@ -69,6 +71,7 @@ router.post("/analisar_carteira", async (request, response) => {
 
         // const json = {
         //     "mensagem": "OK",
+        //     "id_analise": 1,
         //     "response": [
         //         {
         //             "tipo_analise": "Análise Realizada de Curto Prazo",
@@ -171,7 +174,7 @@ router.post("/analisar_carteira", async (request, response) => {
             const dataUltimaAnaliseMaisQuatroHoras = new Date(new Date(ultima_analise.created_at).getTime() + 4 * 60 * 60 * 1000);
             var diferenca_em_horas = (new Date() - dataUltimaAnaliseMaisQuatroHoras) / (1000 * 60 * 60);
 
-            if (diferenca_em_horas >= 0) {
+            if (diferenca_em_horas <= 0) {
                 var diferenca_em_milissegundos = Math.abs(new Date() - dataUltimaAnaliseMaisQuatroHoras);
                 const minutos_restantes = Math.floor((diferenca_em_milissegundos % (1000 * 60 * 60)) / (1000 * 60));
                 const horas_restantes = Math.abs(Math.ceil(diferenca_em_horas)); // Usando ceil para arredondar para cima e garantir ao menos 1 hora, e abs para converter qualquer valor negativo em positivo
@@ -364,6 +367,7 @@ Para mais informações e atualizações, acesse nossa comunidade, siga-nos nas 
 
         response.status(200).json({
             "mensagem": "OK",
+            "id_analise": analise_carteira.id,
             "response": response_analises
         });
 
@@ -381,6 +385,32 @@ Para mais informações e atualizações, acesse nossa comunidade, siga-nos nas 
                 "erro": error.message
             });
         };
+    };
+});
+
+router.patch("/avaliar_analise_carteira", async (request, response) => {
+    try {
+        /**
+        * Endpoint para avaliar analise da carteira cripto
+        *  @param {
+        *   "id_analise": "1",
+        *   "avaliacao_positiva": "true",
+        *   "avaliacao": "Bom dms"
+        * } request.body
+        */
+
+        await models.analises_carteiras.update({
+            avaliacao_positiva: request.body.avaliacao_positiva,
+            avaliacao: request.body.avaliacao
+        }, { where: { id: request.body.id_analise } });
+
+        response.status(200).json({
+            "mensagem": "Avaliação recebida com sucesso"
+        });
+
+    } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
+        response.status(500).json({ "mensagem": "O servidor não conseguiu processar sua avaliação. Tente novamente.", "erro": error.message });
     };
 });
 

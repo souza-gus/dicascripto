@@ -4,6 +4,7 @@ const { models } = require("../banco/sinc_db");
 const { enviar_mensagem_midia_social, enviar_mensagem } = require("../functions/mensageiro");
 const multer = require("multer");
 const { pegar_chats_whatsapp, enviar_mensagem_whatsapp } = require("../functions/apps_midias_sociais/whatsapp");
+const { ftp_url_arquivo } = require("../functions/ftp");
 require("dotenv").config();
 
 // const storage = multer.diskStorage({
@@ -32,11 +33,25 @@ router.post("/enviar_mensagem", upload.fields([
         *   "created_by": "1"
         *   "mensagem": "Certo",
         *   "mensagem_categorias": [ ...objetos da Tabela "categorias_mensagens" ]
-        *   "midias_sociais": [ ...objetos da Tabela "midias_sociais_grupos" detalhado ]
+        *   "destinatarios": [ {"id_grupo": 1, "destinatario": "321312", "midia_social_codigo" } ]
         * } request.body
         */
 
-        const id_mensagem = await enviar_mensagem(request);
+        // Montando requisição para enviar mensagem nas midias sociais
+        const req_created_by = request.body.created_by ?? undefined;
+        const req_mensagem = request.body.mensagem;
+
+        var req_mensagem_categorias = request.body.mensagem_categorias;
+        req_mensagem_categorias = typeof req_mensagem_categorias === "string" ? JSON.parse(req_mensagem_categorias) : req_mensagem_categorias;
+
+        var req_destinatarios = request.body.destinatarios;
+        req_destinatarios = typeof req_destinatarios === "string" ? JSON.parse(req_destinatarios) : req_destinatarios;
+
+        const req_files_arquivos = request.files?.arquivos ?? null; // Se um dia for usar js para consumir a API       
+        const req_files_arquivo = request.files?.arquivo?.[0] ?? null; // O bubble aceita enviar apenas um arquivo por vez
+
+        const id_mensagem = await enviar_mensagem(req_created_by, req_mensagem, req_mensagem_categorias, req_destinatarios, req_files_arquivos, req_files_arquivo);
+
 
         response.status(200).json({ "mensagem": "Mensagem criada com sucesso", id_mensagem });
     } catch (error) {
@@ -87,7 +102,7 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
             };
 
             // Envia a mensagem para cada midia_social e trata os erros de acordo.
-            const codigo = midia_social.id_midia_social_midias_sociai.codigo;
+            const codigo = midia_social.midia_social.codigo;
             const destinatario = midia_social.destinatario;
             const mensagem = msg.mensagem;
             const id_msg = msg.id;
@@ -104,6 +119,7 @@ router.post("/enviar_mensagem/:id_mensagem", async (request, response) => {
 
         response.status(200).json({ "mensagem": "OK" });
     } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -140,7 +156,7 @@ router.get("/midias_sociais_grupos/detalhado", async (request, response) => {
         const midias_sociais_grupos = await models.midias_sociais_grupos.findAll({
             include: {
                 model: models.midias_sociais,
-                as: "id_midia_social_midias_sociai"
+                as: "midia_social"
             },
             limit: por_pagina,
             offset: offset,
@@ -158,7 +174,7 @@ router.get("/midias_sociais_grupos/detalhado", async (request, response) => {
         });
 
     } catch (error) {
-
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({
             "mensagem": "Ops! Não foi possível recuperar os dados. Por favor, tente novamente.",
             "erro": error.message
@@ -205,7 +221,7 @@ router.get("/status_envios_mensagem/:id_mensagem", async (request, response) => 
         });
 
     } catch (error) {
-
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -229,7 +245,7 @@ router.get("/pegar_chats_wahtsapp", async (request, response) => {
         });
 
     } catch (error) {
-
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({ "erro": error.message });
     };
 });
@@ -263,10 +279,69 @@ router.post("/enviar_mensagem_simples", async (request, response) => {
         });
 
     } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
         response.status(500).json({
             "mensagem": "Não foi possível encaminhar a senha ao destinatário.",
             "erro": error.message
         });
+    };
+});
+
+router.get("/midias_sociais/grupos", async (request, response) => {
+    try {
+        /**
+        * Endpoint para trazer as midias sociais juntos com todos os seus grupos
+        */
+
+        const midias_sociais_grupos = await models.midias_sociais.findAll({
+            include: {
+                model: models.midias_sociais_grupos,
+                as: "grupos",
+                required: true,
+                include: {
+                    model: models.midias_sociais,
+                    as: "midia_social",
+                    required: true,
+                    attributes: ["codigo", "background_cor", "logo"]
+                }
+            }
+        });
+
+        // Retorna a resposta
+        response.status(200).json({
+            "mensagem": "OK",
+            "response": midias_sociais_grupos
+        });
+
+    } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
+        response.status(500).json({
+            "mensagem": "Ops! Não foi possível recuperar os dados. Por favor, tente novamente.",
+            "erro": error.message
+        });
+    };
+});
+
+router.post("/midias_sociais_grupos", upload.single("arquivo"), async (request, response) => {
+    try {
+        /**
+        * Endpoint para criar grupo de midias sociais
+        * @param {
+        *   "id_midia_social": 1,
+        *   "nome": "",
+        *   "descricao": ""
+        *   "distinatario": "",
+        *   "link_acesso": "",
+        * } request.body
+        */
+
+        const url_arquivo = request?.file ? await ftp_url_arquivo(request.file) : null;
+        await models.midias_sociais_grupos.create({ ...request.body, imagem: url_arquivo });
+
+        response.status(200).json({ "mensagem": "Grupo inserido com sucesso." });
+    } catch (error) {
+        console.error("\x1b[91m%s\x1b[0m", error);
+        response.status(500).json({ "erro": error.message });
     };
 });
 

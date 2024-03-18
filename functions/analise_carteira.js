@@ -1,27 +1,64 @@
 const fetch = require("node-fetch");
-const { Spot } = require('@binance/connector');
+const { Spot } = require("@binance/connector");
+const { RestClient } = require("okx-api");
+const { RestClientV5 } = require("bybit-api");
 
 const client_spot_binance = new Spot();
+const client_okx = new RestClient();
+const client_bybit = new RestClientV5();
 
-const pegar_critpos_coingecko = () => new Promise((resolve, reject) => {
-    fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250", {
-        method: "GET",
-        headers: {
-            "Content-Type": "application/json"
-        },
-    })
-        .then(response => {
+const intervalos_corretoras = {
+    "5m": { "binance": "5m", "okx": "5m", "bybit": "5" },
+    "4h": { "binance": "4h", "okx": "4H", "bybit": "240" },
+    "1d": { "binance": "1d", "okx": "1D", "bybit": "D" },
+};
+
+const pegar_critpos_coingecko = () => new Promise(async (resolve, reject) => {
+
+    let todas_as_criptos = [];
+    
+    for (let pagina_atual = 1; pagina_atual <= 2; pagina_atual++) {
+        const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${pagina_atual}`;
+
+        try {
+            const response = await fetch(url, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+            });
+
             if (!response.ok) {
                 throw new Error(`Erro na requisição: ${response.status} - ${response.statusText}`);
             };
-            return response.json();
-        })
-        .then(data => {
-            resolve(data);
-        })
-        .catch(error => {
+
+            const data = await response.json();
+            todas_as_criptos = todas_as_criptos.concat(data);
+        } catch (error) {
             reject(error);
-        });
+            return;
+        };
+    };
+
+    resolve(todas_as_criptos);
+    // fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1", {
+    //     method: "GET",
+    //     headers: {
+    //         "Content-Type": "application/json"
+    //     },
+    // })
+    //     .then(response => {
+    //         if (!response.ok) {
+    //             throw new Error(`Erro na requisição: ${response.status} - ${response.statusText}`);
+    //         };
+    //         return response.json();
+    //     })
+    //     .then(data => {
+    //         resolve(data);
+    //     })
+    //     .catch(error => {
+    //         reject(error);
+    //     });
 });
 
 // Exemplo de implementação da SMA (Média Móvel Simples)
@@ -67,16 +104,37 @@ function calculateRSI(close_prices, length) {
 
 const calcular_rsi_cripto = async (sigla = 'btc', interval = '1d', limit = 100) => {
     try {
-        const response = await client_spot_binance.klines(`${sigla}USDT`.toUpperCase(), interval, { limit }).catch(error => {
-            // se falhar a busca na binance tenta usar outra exchange para pegar a informação dos candles
-            throw error;
-        });
-        const closingPrices = await response.data.map(kline => parseFloat(kline[4]));
-        const rsi = calculateRSI(closingPrices, 14);
 
-        return rsi;
+        // Pega os ultimos 100 cadles de qualquer par utilizando Binance, OKX e Bybit
+        const closingPrices = await client_spot_binance.klines(`${sigla}USDT`.toUpperCase(), intervalos_corretoras[interval]["binance"], { limit })
+            .then(data => {
+                return data.data.map(kline => parseFloat(kline[4]));
+            })
+            .catch(async error => {
+                // se falhar a busca na binance tenta usar a OKX
+                return await client_okx.getCandles(`${sigla}-USDT`.toUpperCase(), intervalos_corretoras[interval]["okx"], { limit })
+                    .then(candles => {
+                        return candles.map(kline => parseFloat(kline[4]));
+                    })
+                    .catch(async error => {
+                        // se falhar a busca na OKX tenta usar a ByBit
+                        return await client_bybit.getKline({ category: "spot", interval: intervalos_corretoras[interval]["bybit"], symbol: `${sigla}USDT`.toUpperCase(), limit: 100 })
+                            .then(data => {
+                                if (!data.result?.list) {
+                                    throw new Error(data.retMsg);
+                                };
+
+                                return data.result.list.map(kline => parseFloat(kline[4]));
+                            })
+                            .catch(error => {
+                                throw error;
+                            });
+                    });
+            });
+
+        return calculateRSI(closingPrices, 14);;
     } catch (error) {
-        // console.log(error.message);
+        console.error("\x1b[91m%s\x1b[0m", error);
         throw error.message;
     };
 };
